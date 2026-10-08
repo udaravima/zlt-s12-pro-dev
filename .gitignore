@@ -1,0 +1,15 @@
+# vendor code and firmware-derived data stay local (see README, Licensing)
+fxs/slicctl/vendor/
+fxs/slicctl/vpapi/
+fxs/slicctl/arch/*.h
+fxs/slicctl/stock_profiles.c
+fxs/slicctl/slicctl
+fxs/build/
+*.ko
+*.apk
+*.raw
+*.s16
+*.bin
+# firmware dumps and backups: device-unique data
+modem-fw-dump/
+*.tar.gz

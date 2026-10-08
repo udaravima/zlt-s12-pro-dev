@@ -1,0 +1,57 @@
+#!/bin/sh /etc/rc.common
+# RJ11 phone port (Le9641 SLIC) for the ZLT S12 Pro.
+#
+# Loads the two SLIC kernel modules late in boot (START=99, after the network)
+# and runs `slicctl daemon`. The modules are not autoloaded from modules.d on
+# purpose: this kernel has panic_on_oops=1 + panic=3, so a module crash during
+# early boot would reboot-loop the router. Here a marker file guards the load:
+# if a load ever crashes the box, the next boot finds the marker and skips it.
+
+START=99
+STOP=10
+USE_PROCD=1
+
+MARKER=/etc/slic.loading
+
+load_module() {
+	local name="$1"; shift
+	lsmod | grep -q "^$name " && return 0
+	insmod "$name" "$@"
+}
+
+start_service() {
+	local enabled clk_switch spi_hz
+
+	config_load slic
+	config_get_bool enabled main enabled 1
+	config_get clk_switch main clk_switch 0
+	config_get spi_hz main spi_hz 1000000
+	[ "$enabled" = 1 ] || return 0
+
+	if [ -e "$MARKER" ]; then
+		logger -t slic "a previous module load did not complete (crash?): not loading." \
+			"Check 'logread', then 'rm $MARKER' and '/etc/init.d/slic start' to retry"
+		return 0
+	fi
+
+	touch "$MARKER"; sync
+	load_module slic_spi_cs1 max_hz="$spi_hz" &&
+		load_module mt7621_pcm_raw clk_switch="$clk_switch"
+	local ok=$?
+	rm -f "$MARKER"; sync
+	if [ $ok -ne 0 ] || [ ! -c /dev/spidev0.1 ]; then
+		logger -t slic "module load failed (see dmesg); daemon not started"
+		return 0
+	fi
+
+	procd_open_instance
+	procd_set_param command /usr/sbin/slicctl daemon
+	procd_set_param respawn 3600 5 5
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+service_triggers() {
+	procd_add_reload_trigger slic
+}
