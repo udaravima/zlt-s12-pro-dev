@@ -358,23 +358,33 @@ PCM driver gained (`mt7621_pcm_raw.c`, kmod release 2):
 
 **Two clocks, one drift problem.** Asterisk sends a 20 ms frame whenever its
 own timer says 20 ms have passed. The phone consumes samples at the PCM
-clock, made by the audio PLL. The two clocks are never exactly equal, so if
-Asterisk's runs even slightly fast, the queue toward the phone grows for the
-whole call, and the delay grows with it. The daemon caps it: if more than
-**100 ms** (1600 bytes) is already queued, it drops the incoming frame and
-counts the drop. Every test call so far logged **0 drops** (the longest ran
-39 s), so the drift is small, but it hasn't been quantified over a long call.
+clock, made by the audio PLL. If the two clocks differ, the queue toward the
+phone either grows (Asterisk faster) or runs dry (PCM faster). The daemon
+caps growth at **100 ms** (1600 bytes) and counts the frames it drops; every
+call so far logged **0 drops**, which looked like "no drift" but wasn't:
+**the PCM clock is 0.41 % fast** (measured 2026-10-12: 80,331 FIFO words in
+20.000 s by the router's NTP clock = **8,033 samples/s**, not 8,000). So the
+queue never grows, it runs dry about 33 times a second, and each time the
+driver plays a few samples of silence (the drop counter can't see that).
+Toward the phone that's a tiny gap every few frames; from the phone, apps
+receive 0.4 % more audio than real time.
+
+The divider is computed for a 294 MHz PLL (`freqin`): 147 MHz / 2.048 MHz =
+71.777 (`DIVINT 71`, `DIVCOMP 199/256`). Setting **72 + 19/256 = 72.074**
+through debugfs gave **8,000.0 samples/s** over 20 s with no FIFO errors
+(tested live, then restored). Why it's off is not settled: either the PLL
+really runs at about 295.2 MHz, or the frame is 255 bit clocks long instead
+of 256 (2,048,000 / 255 = 8,031 Hz, closer to the nominal PLL). Making the
+fix permanent is a driver default change; it is still open.
 
 **Echo.** A two-wire phone line carries both directions on the same pair, so
-some of what the router sends leaks back into what it receives. In the 800
-test, a beep sent at about −12 dBFS came back at about −44 dBFS, roughly
-**30 dB of echo loss**. That's one measurement, so treat it as approximate.
-Whoever is on the *other* end of the call hears this echo: their own voice
-comes back 30 dB quieter, delayed by the trip through the router. For a
-person on the LAN that is usually tolerable (not yet tried with a
-softphone). For an app it's a real problem: an AI agent hears a faint copy
-of its own speech, which can look like the caller interrupting. There is
-**no echo canceller yet** (doc 10 §10).
+some of what the router sends leaks back into what it receives. Measured with
+noise (2026-10-12, §7.1): the echo comes back **about 20 dB below** what was
+sent (an earlier single-beep estimate said 30 dB). Whoever is on the *other*
+end of the call hears it: their own voice, 20 dB quieter, delayed by the
+trip through the router. For an app it's a real problem: an AI agent hears a
+faint copy of its own speech, which can look like the caller interrupting.
+There is **no echo canceller yet** (doc 10 §10).
 
 ### 7.1 Echo cancellation: what it is and how we'd add it
 
@@ -428,11 +438,36 @@ far end is talking.
   million multiply-adds per second, under 1 % of one 880 MHz core
   (estimate, not measured).
 
+**Measurement (2026-10-12).** `fxs/tools/echo_measure.py` plays a fixed
+signal (1 s silence, 4 s white noise at −20 dBFS, 1 s silence, 4 s at
+−10 dBFS) while the handset is lifted and silent, and fits a least-squares
+filter to the echo: the best a *linear* canceller could do.
+
+| Where measured | Echo below sent (ERL) | Echo delay | Best linear cancellation (ERLE) |
+|---|---|---|---|
+| App side, through ext 800 | 20 dB | 50 → 76 ms **during 9 s** | **0 dB**: the delay moves (PCM clock 0.41 % fast) and jitters by about 4 samples |
+| Router side, `/dev/slicpcm` played and recorded together | 20.3 dB at both levels (linear) | **constant** to the sample | **19–22 dB** (residual −59 / −52 dBFS) |
+
+What that means for a canceller:
+
+- **It must sit at the driver, not in an app.** On the same PCM clock the
+  echo path is fixed; across the daemon's queue and the network it moves,
+  and no adaptive filter can follow it.
+- **The echo is short: 99 % of its energy lies within 2.1 ms** (17 taps).
+  The delay in the router-side recording includes the driver's queues, so
+  the delay `pcm_tick()` will see is not measured, but the FIFOs are only 8
+  words deep, so it is a few ms: a 128-tap (16 ms) OSLEC filter covers it.
+- **Expect about 20 dB from the linear filter**, so about 40 dB in total
+  with the line's own 20 dB. The residual grows with the signal level
+  rather than sitting at the −70 dBFS noise floor, so something non-linear
+  or not quite stationary remains (not identified). OSLEC's non-linear
+  processor suppresses such residue while only the far end talks.
+
 **Plan:**
 
-1. **Measure first:** with the handset lifted and silent, play noise into
-   the line and record the return. That gives the echo's level and delay,
-   and a before/after number.
+1. ~~Measure first~~ (done 2026-10-12, above). Fix the PCM clock first
+   (driver default `DIVINT 72 / DIVCOMP 19`), so calls stop gaining or
+   losing samples.
 2. Add OSLEC to `mt7621_pcm_raw` (module parameter `ec=0|1`, filter length;
    `DEPENDS:=+kmod-echo`), cleaning each received sample against the sample
    sent at the same tick; reset it at the start of each call.
@@ -553,7 +588,7 @@ trunk is just another place a call can come from.
 
 | Item | Why it matters | Next step |
 |---|---|---|
-| Echo cancellation | the far end (softphone, app) hears itself ~30 dB down; an AI agent may mistake it for the caller interrupting | OSLEC (`kmod-echo`) in the PCM driver's tick; plan in §7.1 |
+| Echo cancellation | the far end (softphone, app) hears itself ~20 dB down; an AI agent may mistake it for the caller interrupting | OSLEC (`kmod-echo`) in the PCM driver's tick; plan in §7.1 |
 | Handset keypresses during a call | apps on 800 get them only as tones | detect in the app, or have the daemon translate them into a dialplan action |
 | Long-call clock drift | the 100 ms cap would start dropping frames | log `frames dropped` on a 10-minute call |
 | Hook flash | could give transfer / call waiting | not handled; the daemon sees it as a short on-hook |
