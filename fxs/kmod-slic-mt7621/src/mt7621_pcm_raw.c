@@ -17,6 +17,9 @@
  *                          TCFLSH (TCIFLUSH/TCOFLUSH/TCIOFLUSH: drop queued audio)
  *   debugfs slicpcm/regs   read: register dump + counters
  *                          write: "<offset> <value>" (hex) to poke a register
+ *
+ * Received audio passes through OSLEC, the kernel's line echo canceller
+ * (module parameters ec, ec_mode, ec_pre, ec_taps). TCIFLUSH restarts it.
  */
 #include <linux/module.h>
 #include <linux/io.h>
@@ -84,7 +87,12 @@
 /* ---- parameters: everything uncertain is a knob ---- */
 static unsigned int bclk_hz = 2048000;	/* stock SLIC device profile: PCLK 2.048 MHz */
 module_param(bclk_hz, uint, 0444);
-static unsigned int freqin = 294000000;	/* audio PLL output when setup_pll=1 (2020 driver value) */
+/* Audio PLL output when setup_pll=1, as the divider sees it. The 2020
+   driver's 294 MHz gave 8,033 frames/s (counted against NTP time over 20 s);
+   this calibrated value gives divider 72 + 19/256 and 8,000.0 frames/s.
+   Whether the PLL really runs at 295.2 MHz or the frame is one bit clock
+   short (255) is not known; the frame rate is what matters. */
+static unsigned int freqin = 295216000;
 module_param(freqin, uint, 0444);
 static bool setup_pll = true;		/* program the analog audio PLL (ANA_CTRL); required: without it no PCLK reaches the SLIC */
 module_param(setup_pll, bool, 0444);
@@ -119,6 +127,49 @@ static int clk_switch;
 module_param(clk_switch, int, 0444);
 MODULE_PARM_DESC(clk_switch, "slic_clk_switch (GPIO bank1 pin 0): 0 router PCM, 1 modem, -1 untouched");
 static int clk_switch_gpio = -1;
+
+/* ---- line echo canceller: OSLEC (kmod-echo, drivers/misc/echo) ----
+   The SLIC's 2-wire hybrid leaks part of what we send back into what we
+   receive (measured: 20 dB down, 2.1 ms long). The canceller runs here, in
+   the tick, because only here do sent and received samples share one clock
+   at a fixed offset. The kernel doesn't install OSLEC's header, so its API
+   is declared below. */
+#define ECHO_CAN_USE_ADAPTION	0x01
+#define ECHO_CAN_USE_NLP	0x02
+#define ECHO_CAN_USE_CNG	0x04
+#define ECHO_CAN_USE_CLIP	0x08
+#define ECHO_CAN_USE_RX_HPF	0x20
+struct oslec_state;
+struct oslec_state *oslec_create(int len, int adaption_mode);
+void oslec_free(struct oslec_state *ec);
+void oslec_flush(struct oslec_state *ec);
+void oslec_adaption_mode(struct oslec_state *ec, int adaption_mode);
+int16_t oslec_update(struct oslec_state *ec, int16_t tx, int16_t rx);
+
+static bool ec = true;
+module_param(ec, bool, 0644);
+MODULE_PARM_DESC(ec, "Cancel line echo on received audio (re-enabling starts it afresh)");
+static unsigned int ec_taps = 128;	/* filter length, samples: 16 ms */
+module_param(ec_taps, uint, 0444);
+static unsigned int ec_mode = ECHO_CAN_USE_ADAPTION | ECHO_CAN_USE_NLP |
+			      ECHO_CAN_USE_CLIP | ECHO_CAN_USE_RX_HPF;
+module_param(ec_mode, uint, 0644);
+MODULE_PARM_DESC(ec_mode, "OSLEC flags: 1 adapt, 2 NLP, 4 comfort noise, 8 clip, 0x20 RX high-pass");
+/* Each received sample is paired with the sample written to the TX FIFO in
+   the same tick (ec_pre = 0), or ec_pre samples before it. A sample's echo
+   can only come back after it was written, so at 0 the echo lands at tap
+   (FIFO latency + SLIC delay - ec_pre), which must stay inside
+   0..ec_taps-1. Raise ec_pre only if that delay grows past ec_taps. */
+static unsigned int ec_pre;
+module_param(ec_pre, uint, 0644);
+
+#define TXH_LEN 1024			/* sent-sample history, power of 2 */
+static s16 txh[TXH_LEN];
+static u32 tx_n, rx_n;			/* samples written to / read from the FIFOs */
+static u32 ec_base;			/* tx_n - rx_n when the canceller (re)started */
+static struct oslec_state *ec_st;
+static bool ec_on, ec_reset;
+static unsigned int ec_mode_set;
 
 static void __iomem *sysc, *pcm, *ana;
 static struct clk *pcm_clk;
@@ -282,6 +333,37 @@ static void pcm_hw_stop(void)
 	}
 }
 
+static inline void tx_hist(s16 s)
+{
+	txh[tx_n++ & (TXH_LEN - 1)] = s;
+}
+
+/* one received sample: remove the echo of what was sent */
+static inline s16 rx_clean(s16 s)
+{
+	s16 ref = txh[(rx_n++ + ec_base - READ_ONCE(ec_pre)) & (TXH_LEN - 1)];
+
+	return ec_on ? oslec_update(ec_st, ref, s) : s;
+}
+
+/* called with fifo_lock held: follow the ec/ec_mode knobs, restart on request */
+static void ec_follow(void)
+{
+	bool want = READ_ONCE(ec) && ec_st;
+	unsigned int mode = READ_ONCE(ec_mode);
+
+	if (want && (!ec_on || ec_reset)) {
+		oslec_flush(ec_st);
+		ec_base = tx_n - rx_n;
+	}
+	ec_on = want;
+	ec_reset = false;
+	if (ec_st && mode != ec_mode_set) {
+		oslec_adaption_mode(ec_st, mode);
+		ec_mode_set = mode;
+	}
+}
+
 static enum hrtimer_restart pcm_tick(struct hrtimer *t)
 {
 	u32 st = pcm_rd(PCM_CHA0_FF_STATUS);
@@ -299,6 +381,7 @@ static enum hrtimer_restart pcm_tick(struct hrtimer *t)
 	}
 
 	spin_lock_irqsave(&fifo_lock, flags);
+	ec_follow();
 	while (free--) {
 		s16 a = 0, b = 0;
 		u32 w;
@@ -316,6 +399,8 @@ static enum hrtimer_restart pcm_tick(struct hrtimer *t)
 			}
 			w = pack_hi_first ? ((u32)(u16)a << 16) | (u16)b
 					  : ((u32)(u16)b << 16) | (u16)a;
+			tx_hist(a);
+			tx_hist(b);
 		} else {
 			if (kfifo_get(&txq, &a)) {
 				st_tx_words++;
@@ -324,6 +409,7 @@ static enum hrtimer_restart pcm_tick(struct hrtimer *t)
 				st_tx_silence++;
 			}
 			w = ((u32)(u16)a) << sample_shift;
+			tx_hist(a);
 		}
 		pcm_wr(PCM_CH0_FIFO, w);
 	}
@@ -333,10 +419,10 @@ static enum hrtimer_restart pcm_tick(struct hrtimer *t)
 		if (pack) {
 			s16 hi = (s16)(w >> 16), lo = (s16)(w & 0xFFFF);
 
-			kfifo_put(&rxq, pack_hi_first ? hi : lo);
-			kfifo_put(&rxq, pack_hi_first ? lo : hi);
+			kfifo_put(&rxq, rx_clean(pack_hi_first ? hi : lo));
+			kfifo_put(&rxq, rx_clean(pack_hi_first ? lo : hi));
 		} else {
-			kfifo_put(&rxq, (s16)(w >> sample_shift));
+			kfifo_put(&rxq, rx_clean((s16)(w >> sample_shift)));
 		}
 		st_rx_words++;
 		woke_rx = true;
@@ -427,8 +513,10 @@ static long slicpcm_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		if (arg > TCIOFLUSH)
 			return -EINVAL;
 		spin_lock_irqsave(&fifo_lock, flags);
-		if (arg == TCIFLUSH || arg == TCIOFLUSH)
+		if (arg == TCIFLUSH || arg == TCIOFLUSH) {
 			kfifo_reset(&rxq);
+			ec_reset = true;	/* a new call: the echo canceller starts afresh */
+		}
 		if (arg == TCOFLUSH || arg == TCIOFLUSH)
 			kfifo_reset(&txq);
 		spin_unlock_irqrestore(&fifo_lock, flags);
@@ -477,6 +565,9 @@ static int regs_show(struct seq_file *m, void *v)
 		   st_ticks, st_tx_words, st_tx_silence, st_rx_words);
 	seq_printf(m, "tx_unrun %lu tx_ovrun %lu rx_ovrun %lu txq %u rxq %u\n",
 		   st_tx_unrun, st_tx_ovrun, st_rx_ovrun, kfifo_len(&txq), kfifo_len(&rxq));
+	seq_printf(m, "ec %s taps %u mode %#x pre %u base %u (tx_n - rx_n now %u)\n",
+		   !ec_st ? "unavailable" : ec_on ? "on" : "off", ec_taps, ec_mode_set,
+		   ec_pre, ec_base, tx_n - rx_n);
 	return 0;
 }
 
@@ -523,6 +614,12 @@ static int __init slicpcm_init(void)
 		goto err_unmap;
 	}
 
+	ec_st = oslec_create(ec_taps, ec_mode);
+	if (ec_st)
+		ec_mode_set = ec_mode;
+	else
+		pr_warn("slicpcm: no memory for the echo canceller, running without\n");
+
 	ret = claim_clk_switch();
 	if (ret)
 		goto err_unmap;
@@ -550,6 +647,8 @@ err_gpio:
 	if (clk_switch_gpio >= 0)
 		gpio_free(clk_switch_gpio);
 err_unmap:
+	if (ec_st)
+		oslec_free(ec_st);
 	if (ana)
 		iounmap(ana);
 	if (pcm)
@@ -567,6 +666,8 @@ static void __exit slicpcm_exit(void)
 	pcm_hw_stop();
 	if (clk_switch_gpio >= 0)
 		gpio_free(clk_switch_gpio);
+	if (ec_st)
+		oslec_free(ec_st);
 	iounmap(ana);
 	iounmap(pcm);
 	iounmap(sysc);

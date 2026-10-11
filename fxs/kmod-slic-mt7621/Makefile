@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=kmod-slic-mt7621
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 PKG_LICENSE:=GPL-2.0
 
 include $(INCLUDE_DIR)/package.mk
@@ -16,8 +16,8 @@ endef
 
 define KernelPackage/mt7621-pcm-raw
   SUBMENU:=Other modules
-  TITLE:=Minimal MT7621 PCM master with PIO sample pipe (SLIC bring-up)
-  DEPENDS:=@TARGET_ramips_mt7621
+  TITLE:=Minimal MT7621 PCM master with PIO sample pipe and line echo canceller
+  DEPENDS:=@TARGET_ramips_mt7621 +kmod-echo
   FILES:=$(PKG_BUILD_DIR)/mt7621_pcm_raw.ko
 endef
 

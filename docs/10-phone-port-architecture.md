@@ -359,7 +359,7 @@ on:
 | Ring the phone, optionally with a number | `ring SECS NUMBER NAME` on the FIFO | the daemon handles cadence and caller-ID timing |
 | Know when the phone is picked up / hung up | poll `/var/run/slic.state` (or watch `logread -f -e slicctl`) | event push (ubus/socket) is a sensible next addition |
 | Play audio to the handset | `talk`, write s16le 8 kHz to `/dev/slicpcm`, `release` | one writer at a time |
-| Hear the handset microphone | read `/dev/slicpcm` while in `talk` | includes some echo of what you play (no echo canceller yet) |
+| Hear the handset microphone | read `/dev/slicpcm` while in `talk` | echo of what you play is cancelled in the driver (OSLEC, `ec=Y`; doc 11 §7.1) |
 | Dial digits from the phone | Asterisk: dialled numbers run in `[from-phone]` (doc 11) | without Asterisk, digits only appear in the log |
 | Full calls (SIP, apps, AI agents) | Asterisk extension 100 / 800 (doc 11) | AudioSocket for apps: 8 kHz s16le, 20 ms frames |
 
@@ -369,8 +369,8 @@ Candidate applications and what each still needs:
 |---|---|
 | **Notifier** (ring with caller ID when something happens, e.g. a server alert or doorbell) | nothing: works today |
 | **Announcement player / intercom** (lift the handset, hear TTS or a message) | a TTS → s16le step; hook event triggering |
-| **SIP phone** | done with Asterisk on the LAN (doc 11); an ISP SIP trunk is the remaining step (doc 11 §10); echo cancellation still missing |
-| **AI agent / voice app** | works through extension 800 (doc 11 §8); needs echo cancellation for barge-in |
+| **SIP phone** | done with Asterisk on the LAN (doc 11); an ISP SIP trunk is the remaining step (doc 11 §10); line echo cancelled in the driver since kmod r3 |
+| **AI agent / voice app** | works through extension 800 (doc 11 §8); line echo cancelled in the driver (doc 11 §7.1), off-hook result still to measure |
 | **Modem calls** (GSM voice through the LTE modem) | `clk_switch=1` path and the modem's audio routing (doc 07); VoLTE allow-list limits (doc 09 §3.4) |
 
 Architectural gaps worth closing before bigger applications:
@@ -380,7 +380,7 @@ Architectural gaps worth closing before bigger applications:
 2. **Audio arbitration**: a single audio owner, or an ALSA PCM device, so two
    apps can't write `/dev/slicpcm` at once.
 3. ~~**DTMF input**~~: done, software detector (doc 11 §6).
-4. **Echo cancellation** for full-duplex calls (e.g. WebRTC AECM, as Tozed did).
+4. ~~**Echo cancellation**~~: done with the kernel's OSLEC in the PCM driver (doc 11 §7.1), where Tozed used WebRTC AECM in userspace.
 
 ---
 

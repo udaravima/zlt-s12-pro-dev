@@ -396,7 +396,7 @@ After each, `logread -e slicctl | tail` should end with `0 frames dropped`.
 | Digits not heard (log shows no `digit` lines) | phone in pulse mode; very weak keypad | set the phone to tone (DTMF) dialling; doc 10 §8 |
 | Number dialled too early | you paused > 3 s | dial faster, end with `#`, or raise `dial_timeout` |
 | "That is not a valid extension" | number not in the plan | §1, §4.5 |
-| You hear your own voice faintly on a softphone | line echo from the analog phone side (no canceller yet) | doc 11 §7 |
+| You hear your own voice faintly on a softphone | line echo from the analog phone side; the driver cancels it since kmod r3. Check `ec=Y` in `/sys/module/mt7621_pcm_raw/parameters/` | doc 11 §7.1 |
 | Calls to 100 get busy at once | handset off-hook or line not idle; FIFO permissions | `cat /var/run/slic.state`; `ls -l /var/run/slic.ctl` |
 | Softphone: "registration failed", 401/403 | wrong password or username; device not on the LAN subnet | `tail /var/log/asterisk/messages.log` (`Failed to authenticate` = password; `Not match Endpoint ACL` = wrong network) |
 | Softphone registered, but no audio | codec mismatch, or a firewall on the device | enable PCMU/PCMA; `asterisk -rvvv` during the call |

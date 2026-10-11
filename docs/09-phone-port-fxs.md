@@ -525,6 +525,10 @@ ssh root@ROUTER 'apk add --allow-untrusted /tmp/kmod-slic-spi-cs1-*.apk \
 packages. Notes:
 - The kmods are tied to this exact kernel build (`kernel=6.12.94~35fb64ea…`).
   **After a firmware upgrade they must be rebuilt** with the matching SDK.
+- `kmod-mt7621-pcm-raw` r3 and later needs `kmod-echo` (the kernel's OSLEC
+  echo canceller). It is an official package, so `apk add` fetches it from
+  the feed (the router needs internet access, or `kmod-echo` installed
+  beforehand).
 - Building `slic-fxs` makes the SDK repackage all kernel modules (because of
   the `kmod-spi-dev` dependency), so one `build.sh` run takes ~10 minutes.
 

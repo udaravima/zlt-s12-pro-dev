@@ -374,8 +374,10 @@ The divider is computed for a 294 MHz PLL (`freqin`): 147 MHz / 2.048 MHz =
 through debugfs gave **8,000.0 samples/s** over 20 s with no FIFO errors
 (tested live, then restored). Why it's off is not settled: either the PLL
 really runs at about 295.2 MHz, or the frame is 255 bit clocks long instead
-of 256 (2,048,000 / 255 = 8,031 Hz, closer to the nominal PLL). Making the
-fix permanent is a driver default change; it is still open.
+of 256 (2,048,000 / 255 = 8,031 Hz, closer to the nominal PLL). **Fixed in
+`kmod-mt7621-pcm-raw` r3:** the default `freqin` is now the calibrated
+295,216,000, which yields that divider; measured 8,000.6 samples/s after
+loading it (the 0.6 is within this method's timing noise).
 
 **Echo.** A two-wire phone line carries both directions on the same pair, so
 some of what the router sends leaks back into what it receives. Measured with
@@ -384,7 +386,7 @@ sent (an earlier single-beep estimate said 30 dB). Whoever is on the *other*
 end of the call hears it: their own voice, 20 dB quieter, delayed by the
 trip through the router. For an app it's a real problem: an AI agent hears a
 faint copy of its own speech, which can look like the caller interrupting.
-There is **no echo canceller yet** (doc 10 §10).
+Since `kmod-mt7621-pcm-raw` r3 the driver cancels it (§7.1).
 
 ### 7.1 Echo cancellation: what it is and how we'd add it
 
@@ -463,16 +465,44 @@ What that means for a canceller:
   or not quite stationary remains (not identified). OSLEC's non-linear
   processor suppresses such residue while only the far end talks.
 
-**Plan:**
+**What's built (kmod-mt7621-pcm-raw r3, 2026-10-12).** `pcm_tick()` keeps
+a 1,024-sample history of everything written to the TX FIFO and passes every
+sample read from the RX FIFO through `oslec_update()` with its reference:
+the sample written in the same tick (`ec_pre = 0`). An echo can only come
+back *after* its sample was written, so the echo lands at a positive tap: the
+FIFO latency plus the SLIC's own delay, well inside 128 taps. The canceller
+restarts whenever the receive queue is flushed (`TCIFLUSH`, which the daemon
+does as each call connects) or when it is switched back on.
 
-1. ~~Measure first~~ (done 2026-10-12, above). Fix the PCM clock first
-   (driver default `DIVINT 72 / DIVCOMP 19`), so calls stop gaining or
-   losing samples.
-2. Add OSLEC to `mt7621_pcm_raw` (module parameter `ec=0|1`, filter length;
-   `DEPENDS:=+kmod-echo`), cleaning each received sample against the sample
-   sent at the same tick; reset it at the start of each call.
-3. Measure again (echo return loss enhancement; target ≥ 20 dB better), then
-   check by ear on a softphone call, with the NLP on and off.
+| Module parameter | Default | Meaning |
+|---|---|---|
+| `ec` | `Y` | cancel echo; writable at runtime in `/sys/module/mt7621_pcm_raw/parameters/` |
+| `ec_mode` | `43` (0x2b) | OSLEC flags: 1 adapt, 2 NLP, 8 clip residue to the background level, 0x20 RX high-pass (cuts DC and below ~160 Hz) |
+| `ec_pre` | `0` | pair each received sample with the sample sent this many samples earlier; raise only if the echo delay ever exceeds `ec_taps` |
+| `ec_taps` | `128` | filter length in samples (16 ms); load time only |
+
+`debugfs slicpcm/regs` prints a line `ec on taps 128 mode 0x2b pre 0 ...`.
+
+**A trap in the first version:** `ec_pre` started at 64, on a sign error.
+Pairing each received sample with the sample sent 64 samples *earlier* than
+the same tick put the echo before its own cause, outside the filter, so
+OSLEC learned nothing. And the NLP only engages once the total echo loss
+(line plus filter) reaches 24 dB; the line alone gives 20, so with the filter
+idle the NLP never woke either. The test said "on" and "off" were identical
+(20.4 vs 19.8 dB), which is what exposed it.
+
+**Results** (the same noise at −20 dBFS, canceller off → on in one run;
+played and recorded at `/dev/slicpcm`, as in the measurement above):
+
+| Setup | Canceller off | On, filter only (no NLP) | On, full (NLP) |
+|---|---|---|---|
+| Handset **on the cradle**, line in TALK (strong echo) | 6.7 dB down | **33 dB** down (−53 dBFS); learned within 0.25 s | about **44 dB** down (−64 dBFS) |
+| Handset **lifted** (a real call) | 20.4 dB down | not yet measured with `ec_pre = 0` | not yet measured |
+
+The on-cradle case verifies the canceller itself and was repeated after a
+reload with the new defaults (same numbers). The off-hook run with the
+correct alignment is still to do, as is a listening check on a softphone
+call. The cradle case is also the harder one: its echo is 14 dB stronger.
 
 **Levels** (same 800 test): speech arrived at −28 to −36 dBFS RMS, with
 −57 to −60 dBFS between words. That is normal telephone level with a quiet
@@ -588,7 +618,7 @@ trunk is just another place a call can come from.
 
 | Item | Why it matters | Next step |
 |---|---|---|
-| Echo cancellation | the far end (softphone, app) hears itself ~20 dB down; an AI agent may mistake it for the caller interrupting | OSLEC (`kmod-echo`) in the PCM driver's tick; plan in §7.1 |
+| Echo cancellation | the far end (softphone, app) hears itself ~20 dB down; an AI agent may mistake it for the caller interrupting | built (OSLEC in the PCM driver, kmod r3, §7.1): verified on the cradle, 33 dB / ~44 dB; off-hook measurement and a listening test still to do |
 | Handset keypresses during a call | apps on 800 get them only as tones | detect in the app, or have the daemon translate them into a dialplan action |
 | Long-call clock drift | the 100 ms cap would start dropping frames | log `frames dropped` on a 10-minute call |
 | Hook flash | could give transfer / call waiting | not handled; the daemon sees it as a short on-hook |
