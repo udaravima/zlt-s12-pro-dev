@@ -12,6 +12,9 @@
  *
  *   /dev/slicpcm           write: S16_LE mono 8 kHz samples -> PCM TX (ch0)
  *                          read:  PCM RX samples (ch0)
+ *                          poll/O_NONBLOCK supported; ioctls FIONREAD and
+ *                          TIOCOUTQ (queued samples * 2, i.e. bytes) and
+ *                          TCFLSH (TCIFLUSH/TCOFLUSH/TCIOFLUSH: drop queued audio)
  *   debugfs slicpcm/regs   read: register dump + counters
  *                          write: "<offset> <value>" (hex) to poke a register
  */
@@ -31,6 +34,8 @@
 #include <linux/delay.h>
 #include <linux/gpio.h>
 #include <linux/gpio/driver.h>
+#include <linux/poll.h>
+#include <linux/termios.h>
 
 #define SYSC_BASE		0x1E000000
 #define SYSC_SYSCFG0		0x10
@@ -358,6 +363,8 @@ static ssize_t slicpcm_write(struct file *f, const char __user *buf,
 		unsigned int in;
 		unsigned long flags;
 
+		if (kfifo_avail(&txq) < n && (f->f_flags & O_NONBLOCK))
+			return done ? done : -EAGAIN;
 		if (wait_event_interruptible(txwait, kfifo_avail(&txq) >= n))
 			return done ? done : -ERESTARTSYS;
 		if (copy_from_user(chunk, buf + done, n * 2))
@@ -378,6 +385,8 @@ static ssize_t slicpcm_read(struct file *f, char __user *buf,
 	unsigned long flags;
 	unsigned int got;
 
+	if (kfifo_is_empty(&rxq) && (f->f_flags & O_NONBLOCK))
+		return -EAGAIN;
 	if (wait_event_interruptible(rxwait, !kfifo_is_empty(&rxq)))
 		return -ERESTARTSYS;
 	spin_lock_irqsave(&fifo_lock, flags);
@@ -388,10 +397,53 @@ static ssize_t slicpcm_read(struct file *f, char __user *buf,
 	return got * 2;
 }
 
+/* readable: RX samples queued; writable: room for at least 20 ms of TX */
+static __poll_t slicpcm_poll(struct file *f, poll_table *wait)
+{
+	__poll_t mask = 0;
+
+	poll_wait(f, &rxwait, wait);
+	poll_wait(f, &txwait, wait);
+	if (!kfifo_is_empty(&rxq))
+		mask |= EPOLLIN | EPOLLRDNORM;
+	if (kfifo_avail(&txq) >= 160)
+		mask |= EPOLLOUT | EPOLLWRNORM;
+	return mask;
+}
+
+static long slicpcm_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
+{
+	unsigned long flags;
+	int n;
+
+	switch (cmd) {
+	case FIONREAD:
+		n = kfifo_len(&rxq) * 2;
+		return put_user(n, (int __user *)arg);
+	case TIOCOUTQ:
+		n = kfifo_len(&txq) * 2;
+		return put_user(n, (int __user *)arg);
+	case TCFLSH:
+		if (arg > TCIOFLUSH)
+			return -EINVAL;
+		spin_lock_irqsave(&fifo_lock, flags);
+		if (arg == TCIFLUSH || arg == TCIOFLUSH)
+			kfifo_reset(&rxq);
+		if (arg == TCOFLUSH || arg == TCIOFLUSH)
+			kfifo_reset(&txq);
+		spin_unlock_irqrestore(&fifo_lock, flags);
+		wake_up_interruptible(&txwait);
+		return 0;
+	}
+	return -ENOTTY;
+}
+
 static const struct file_operations slicpcm_fops = {
 	.owner = THIS_MODULE,
 	.write = slicpcm_write,
 	.read = slicpcm_read,
+	.poll = slicpcm_poll,
+	.unlocked_ioctl = slicpcm_ioctl,
 };
 
 static struct miscdevice slicpcm_dev = {

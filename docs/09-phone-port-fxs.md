@@ -23,8 +23,10 @@ a userspace control tool run Microsemi's own SLIC library.
 | Built-in dial tone in the handset | ✅ works | Owner heard the tone |
 | Hook detection (lift / hang up) | ✅ works | Every lift and hang-up reported, incl. a 1.5 s flash |
 | **Play an audio clip** to the handset | ✅ works | Loopback capture shows a clean 1 kHz tone at −19.5 dBFS, and the owner heard the 1 kHz tone and the scale correctly |
-| Record audio from the handset microphone | 🟡 path works | The receive side delivers clean audio (it carried the loopback); not yet tried with speech |
-| SIP calls | ❌ not started | Deliberately deferred: the router carries the household internet |
+| Record audio from the handset microphone | ✅ works | Speech recorded during live calls at −28 to −36 dBFS (doc 11 §7) |
+| Keypad dialling (DTMF) | ✅ works | Software detector in the daemon; every digit of `601`, `600#`, `800#` detected live (doc 11 §6) |
+| Calls through Asterisk (phone = extension 100) | ✅ works, LAN only | Dial out and be called with caller ID and two-way audio, 2026-10-11 (doc 11) |
+| SIP trunk to the ISP (SLT) | ❌ not started | Deliberately deferred: the router carries the household internet; `voip_br` stays disabled |
 | Installed as packages, starts at boot | ✅ works, survives reboot | `slic-fxs` + 2 kmod packages; service enabled (`S99slic`); daemon runs the line (§10) |
 | Ring → answer → play clip → dial tone, via the service | ✅ works | Owner picked up after 10 s; daemon log shows ring → talk → playback → dial tone → idle |
 | **Caller ID (Bellcore FSK, MDMF)** | ✅ works | Number shown on a Uniden AS7412 (Asia model) after the first ring; also decoded from a line loopback capture (§14) |
@@ -439,11 +441,12 @@ Module parameters (`modinfo mt7621_pcm_raw.ko`): `setup_pll` (default 1),
 ## 9. What's left
 
 1. ~~Persistence~~, ~~a long-running daemon~~, ~~reboot test~~ (§10), ~~caller
-   ID~~ (§14): done. Remaining: DTMF digit collection in the daemon (for
-   dialling); confirming the V.23 and DTMF caller-ID variants on a phone.
-2. **SIP** (deferred): baresip or Asterisk on top of `/dev/slicpcm`, with echo
-   cancellation. Wait until a failed experiment can't take the home internet
-   down.
+   ID~~ (§14), ~~DTMF dialling~~ (doc 11 §6): done. Remaining: confirming the
+   V.23 and DTMF caller-ID variants on a phone.
+2. ~~**SIP**~~: done as a LAN-only Asterisk PBX with the phone as extension
+   100 (**doc 11**). Remaining there: echo cancellation, and the ISP SIP
+   trunk (doc 11 §10), still deferred while the router carries the home
+   internet.
 3. Optional: replace the PIO timer with DMA (GDMA request lines 6/5) or a
    proper ALSA driver, so standard audio tools work.
 
@@ -458,7 +461,7 @@ steps. Three OpenWrt packages, all built by `fxs/build.sh`:
 |---|---|
 | `kmod-slic-spi-cs1` | `slic_spi_cs1.ko` (depends on `kmod-spi-dev`) |
 | `kmod-mt7621-pcm-raw` | `mt7621_pcm_raw.ko`, which now also **claims GPIO 32 itself** (`clk_switch` parameter), so no `gpioset` is needed |
-| `slic-fxs` | `/usr/sbin/slicctl`, `/usr/sbin/slic-play`, `/etc/init.d/slic`, `/etc/config/slic`, test clips in `/usr/share/slic/` |
+| `slic-fxs` | `/usr/sbin/slicctl`, `/usr/sbin/slic-play`, `/etc/init.d/slic`, `/etc/config/slic`, test clips in `/usr/share/slic/`; since release 2 also the Asterisk link: `/usr/libexec/slic-dial`, `/usr/sbin/slic-asterisk-setup`, config templates in `/usr/share/slic/asterisk/` (doc 11) |
 
 ### The boot-loop trap, and the failsafe
 
@@ -484,7 +487,7 @@ Worst case: one crashed boot, then the next boot is clean.
 
 | Event / command | Result |
 |---|---|
-| handset lifted (idle) | line ACTIVE + **dial tone**, phone LED on |
+| handset lifted (idle) | line TALK + **dial tone**, phone LED on; keypad digits collected and dialled through Asterisk (doc 11 §5.3) |
 | handset hung up | line STANDBY, LED off |
 | `echo "ring 20" > /var/run/slic.ctl` | ring with 2 s on / 4 s off cadence for 20 s |
 | handset lifted while ringing | ringing stops, line goes to TALK ("answered") |
@@ -494,8 +497,9 @@ Worst case: one crashed boot, then the next boot is clean.
 | `echo "cidfmt bell" > /var/run/slic.ctl` | caller-ID format until restart: `bell`, `v23` or `dtmf` (persistent default: uci `slic.main.cid_format`) |
 | `echo "cidsend 0771234567 NAME" > /var/run/slic.ctl` | caller-ID burst only, no ringing (testing; many phones still show it) |
 
-Current state: `cat /var/run/slic.state` (`state=idle|dialtone|ringing|talk`,
-`hook=on|off`). Logs: `logread -e slicctl`. `slic-play FILE.s16` wraps
+Asterisk uses two more commands, `call` and `hangup` (doc 10 §3.1, doc 11
+§5). Current state: `cat /var/run/slic.state`
+(`state=idle|dialtone|dialing|ringing|talk|busy`, `hook=on|off`). Logs: `logread -e slicctl`. `slic-play FILE.s16` wraps
 `talk` → stream to `/dev/slicpcm` → `release`.
 
 ### Everyday commands

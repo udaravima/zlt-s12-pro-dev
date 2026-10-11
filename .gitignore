@@ -13,3 +13,7 @@ fxs/build/
 # firmware dumps and backups: device-unique data
 modem-fw-dump/
 *.tar.gz
+
+# Python bytecode; AudioSocket demo recordings
+__pycache__/
+audiosocket-*.wav

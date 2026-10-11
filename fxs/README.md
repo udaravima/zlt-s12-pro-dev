@@ -2,10 +2,12 @@
 
 Brings the router's analog phone jack (Microchip Le9641 SLIC on the MT7621)
 back to life on OpenWrt 25.12.5: ring, dial tone, hook detection, audio clip
-playback. **Read [docs/09-phone-port-fxs.md](../docs/09-phone-port-fxs.md)
+playback, caller ID, keypad dialling, and calls through an Asterisk PBX on
+the router (the phone becomes extension 100). **Read [docs/09-phone-port-fxs.md](../docs/09-phone-port-fxs.md)
 first**: it explains how the hardware works, how this was worked out, and the
 safety notes. The architecture/onboarding guide is
-[10-phone-port-architecture.md](../docs/10-phone-port-architecture.md).
+[10-phone-port-architecture.md](../docs/10-phone-port-architecture.md);
+the PBX is [11-pbx-asterisk.md](../docs/11-pbx-asterisk.md).
 
 | Path | What |
 |---|---|
@@ -13,6 +15,12 @@ safety notes. The architecture/onboarding guide is
 | `slicctl/` | SLIC control tool + `daemon` mode on Microsemi VP-API-II (`fetch-vpapi.sh` pulls the API) |
 | `slic-fxs/` | OpenWrt package: slicctl, `/etc/init.d/slic` (late load + boot-loop failsafe), `/etc/config/slic`, slic-play |
 | `slicctl/cid.c` | Caller-ID generator: MDMF + Bell 202 / V.23 FSK, DTMF |
+| `slicctl/dtmf.c` | Keypad (DTMF) detector on the handset audio |
+| `slicctl/asock.c` | AudioSocket framing: the daemon's link to Asterisk |
+| `slic-fxs/files/slic-dial` | Dial hook: turns dialled digits into an Asterisk call file |
+| `asterisk/` | LAN-only PBX templates (`pjsip.conf`, `extensions.conf`, `rtp.conf`) and `slic-asterisk-setup` |
+| `tools/dtmf_test.py` | Offline DTMF detector test suite (`python3 tools/dtmf_test.py <host slicctl>`) |
+| `tools/audiosocket_demo.py` | Template AudioSocket app for extension 800 (beep + parrot, saves a .wav) |
 | `tools/extract_profiles.py` | Rebuilds `slicctl/stock_profiles.c` from a stock-firmware dump |
 | `tools/cid_decode.py` | Independent caller-ID decoder for generated files and line captures |
 | `tools/slic-play.sh` | Installed as `slic-play`: play `.s16` clips through the daemon |
@@ -32,6 +40,10 @@ ssh root@ROUTER 'apk add --allow-untrusted /tmp/kmod-slic-spi-cs1-*.apk /tmp/kmo
 ```
 
 Then: lift the handset for dial tone, `echo "ring 15 0123456789 NAME" > /var/run/slic.ctl` (ring with caller ID), `slic-play /usr/share/slic/scale_c4_c5.s16`.
+
+PBX: `apk update && slic-asterisk-setup` on the router (installs Asterisk,
+LAN-only config, prints the SIP accounts). Dial `601` or `600` on the handset;
+`APP=host:port slic-asterisk-setup --no-apk` points extension 800 at your app.
 
 As an OpenWrt feed instead (other owners): add
 `src-git zltphone https://github.com/udaravima/zlt-s12-pro-dev.git`

@@ -15,6 +15,7 @@ reproduce it. Each document has a "How obtained" section with the commands.
 | Topic | Result | Doc |
 |---|---|---|
 | **RJ11 phone port** | Dead on OpenWrt → **rings, caller ID, dial tone, hook detection, audio playback**, packaged and boot-safe | [09](docs/09-phone-port-fxs.md), [10](docs/10-phone-port-architecture.md), code in [`fxs/`](fxs) |
+| **Home PBX** | Asterisk on the router (LAN-only): the analog phone is **extension 100** (keypad dialling, rings with caller ID), LAN SIP devices, and an **AudioSocket hook for apps / AI agents** | [11](docs/11-pbx-asterisk.md), [`fxs/asterisk/`](fxs/asterisk) |
 | Modem as a peer | Root shell, dedicated NCM link to the router (~6–19 MB/s), modem-side tooling | [03](docs/03-interconnect.md), [05](docs/05-expansion.md) |
 | Full modem firmware dump | 128 MB NAND dumped over USB, md5-verified; method and pitfalls | [06](docs/06-fw-dump.md) |
 | WWAN data link | NCM dial path fixed; metric-based failover between PPPoE and LTE | [08](docs/08-wwan-ncm-data.md) |
@@ -35,6 +36,7 @@ reproduce it. Each document has a "How obtained" section with the commands.
 | [08-wwan-ncm-data](docs/08-wwan-ncm-data.md) | WWAN data link: ncm proto, dial mechanism, routing metrics |
 | [09-phone-port-fxs](docs/09-phone-port-fxs.md) | RJ11 FXS port: Le9641 SLIC on the MT7621, firmware archaeology, kernel modules, PCM, caller ID |
 | [10-phone-port-architecture](docs/10-phone-port-architecture.md) | Phone port architecture + onboarding: interfaces, flows, state machine, timing, design decisions, labs |
+| [11-pbx-asterisk](docs/11-pbx-asterisk.md) | Home PBX: Asterisk via apk, LAN-only SIP, the phone over AudioSocket, DTMF detection, app/AI-agent hook, pitfalls |
 | [debrief](docs/debrief.md) | From-the-beginning briefing |
 
 ## Phone port quick start
@@ -56,7 +58,15 @@ ssh root@ROUTER 'apk add --allow-untrusted /tmp/kmod-slic-spi-cs1-*.apk \
 
 Then lift the handset for dial tone, `echo "ring 15 0123456789 NAME" > /var/run/slic.ctl`
 (ring with caller ID), or
-`slic-play /usr/share/slic/scale_c4_c5.s16`. As an OpenWrt feed:
+`slic-play /usr/share/slic/scale_c4_c5.s16`.
+
+**Make it a phone exchange** (doc 11): `apk update && slic-asterisk-setup`
+installs Asterisk from the official telephony feed, configures it for the LAN
+only and prints the SIP accounts. Then dial `601` (announcement) or `600`
+(echo test) on the handset, or point `APP=host:port` at your own AudioSocket
+program (`fxs/tools/audiosocket_demo.py` is a template) and dial `800`.
+
+As an OpenWrt feed:
 `src-git zltphone https://github.com/udaravima/zlt-s12-pro-dev.git` (doc 09 §12).
 
 **Safety:** the phone line carries up to ~100 V when active or ringing. Only

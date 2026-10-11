@@ -16,6 +16,27 @@ The project outgrew its original goal. Timeline of scope:
    driven from OpenWrt with two small kernel modules + Microsemi's API in
    userspace: rings, dial tone, hook detection, audio clip playback (doc 09,
    code in `fxs/`).
+7. **Home PBX** — Asterisk 23 on the router, LAN-only: the RJ11 phone is
+   extension 100 (dial out with the keypad, rings with caller ID), LAN
+   devices log in over SIP (201–203), and apps / AI agents take calls over
+   AudioSocket (ext 800) (doc 11).
+
+## Current state: home PBX (2026-10-11, verified live)
+
+- **Asterisk 23.1.0** from the OpenWrt telephony feed (apk), set up by
+  `slic-asterisk-setup`; SIP on the LAN address only, random per-account
+  passwords generated on the router (never in git). 16 MB resident RAM.
+- **Verified on the real phone:** dial tone; keypad digits detected in
+  software; **601** announcement, **600** echo test (39 s, 0 frames
+  dropped), **800** to a demo app on a LAN PC (beep + parrot, recording
+  saved); **calls to 100** ring with caller ID, answer gives two-way audio;
+  a caller hanging up mid-ring stops the bell.
+- **Not yet verified:** a real softphone on 201–203 calling or being called
+  by the handset (only the `sipp` test tool has authenticated and called
+  601).
+- **Not done:** echo cancellation (an app hears its own voice ~30 dB down);
+  handset keypresses during a call reach apps only as tones; SLT SIP trunk
+  deferred, `voip_br` stays disabled.
 
 ## Current state: RJ11 phone port (2026-10-08, verified live)
 
@@ -32,9 +53,9 @@ The project outgrew its original goal. Timeline of scope:
 - **Key facts:** SLIC on SPI0 CS1 (mode 0); PCM on GPIO 9–12; GPIO 32
   `slic_clk_switch`: 0 = router PCM, 1 = modem PCM; the MT7621 audio PLL must
   be programmed or no clock reaches the SLIC.
-- **Not done:** DTMF dialling in the daemon, confirming the V.23/DTMF
-  caller-ID variants on a phone, SIP (deferred while the router
-  carries the household internet). Not upstreamable to OpenWrt as is
+- **Not done:** confirming the V.23/DTMF caller-ID variants on a phone.
+  (DTMF dialling and SIP/Asterisk: done 2026-10-11, see the PBX state
+  above and doc 11.) Not upstreamable to OpenWrt as is
   (Microsemi licence; doc 09 §13).
 
 ## Current state (2026-10-02, all items verified live)
@@ -140,6 +161,7 @@ repositioning toward Mobitel LTE coverage.
 | `08-wwan-ncm-data.md` | WWAN data link: ncm proto architecture, SPTZCMD dial mechanism, no-dial bug, routing metrics |
 | `09-phone-port-fxs.md` | RJ11 FXS port: Le9641 SLIC on the MT7621, firmware archaeology, kernel modules, clock switch, PCM bring-up, caller ID, how to reproduce |
 | `10-phone-port-architecture.md` | Phone port architecture + onboarding: components, interfaces, runtime flows, state machine, timing, design decisions, failure modes, labs, extension points |
+| `11-pbx-asterisk.md` | Home PBX: Asterisk on the router (apk), LAN-only SIP, the phone as extension 100 over AudioSocket, keypad DTMF detection, app/AI-agent hook (ext 800), pitfalls, SLT trunk plan |
 | `debrief.md` | From-the-beginning briefing: status, stories, decisions, open items |
 
 ## Artifacts
@@ -148,7 +170,8 @@ repositioning toward Mobitel LTE coverage.
 - `scripts/` — `modem_send.py` (modem-side streamer),
   `router_dump_mtd.sh` (dump orchestrator), `modem_bench.py` (throughput)
 - `fxs/` — RJ11 phone port: kernel modules (`kmod-slic-mt7621/`),
-  `slic-fxs/` package (daemon, init script, config), `slicctl` SLIC tool, `build.sh`, profile extractor, PCM analyser, test audio,
+  `slic-fxs/` package (daemon, init script, config, dial hook), `asterisk/`
+  (PBX templates + `slic-asterisk-setup`), `slicctl` SLIC tool, `build.sh`, profile extractor, PCM analyser, test audio,
   decompiled stock device tree. Microsemi API and Tozed profile data are
   fetched/generated locally, not committed (see doc 09 §11)
 - `modem-fw-dump/` — partition images mtd0–7 + `reference-md5s.txt`

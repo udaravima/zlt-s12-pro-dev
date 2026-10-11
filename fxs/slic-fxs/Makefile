@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=slic-fxs
 PKG_VERSION:=2026.10.11
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_LICENSE:=GPL-2.0-only
 
 # fxs/ checkout this package lives in (the SDK sees it through a symlink)
@@ -20,7 +20,9 @@ endef
 define Package/slic-fxs/description
   slicctl (Microsemi VP-API-II with the board's stock profiles), an init
   script that loads the SLIC modules late in boot with a boot-loop failsafe,
-  and slic-play for playing raw 8 kHz clips to the handset.
+  slic-play for playing raw 8 kHz clips to the handset, and the Asterisk
+  link: the daemon's AudioSocket bridge and keypad dialling, the slic-dial
+  hook, and slic-asterisk-setup with LAN-only PBX config templates.
 endef
 
 define Package/slic-fxs/conffiles
@@ -41,9 +43,13 @@ define Build/Compile
 endef
 
 define Package/slic-fxs/install
-	$(INSTALL_DIR) $(1)/usr/sbin $(1)/etc/init.d $(1)/etc/config $(1)/usr/share/slic
+	$(INSTALL_DIR) $(1)/usr/sbin $(1)/usr/libexec $(1)/etc/init.d $(1)/etc/config \
+		$(1)/usr/share/slic/asterisk
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/slicctl $(1)/usr/sbin/slicctl
 	$(INSTALL_BIN) $(FXS_DIR)/tools/slic-play.sh $(1)/usr/sbin/slic-play
+	$(INSTALL_BIN) ./files/slic-dial $(1)/usr/libexec/slic-dial
+	$(INSTALL_BIN) $(FXS_DIR)/asterisk/slic-asterisk-setup $(1)/usr/sbin/slic-asterisk-setup
+	$(INSTALL_DATA) $(FXS_DIR)/asterisk/*.conf $(1)/usr/share/slic/asterisk/
 	$(INSTALL_BIN) ./files/slic.init $(1)/etc/init.d/slic
 	$(INSTALL_CONF) ./files/slic.config $(1)/etc/config/slic
 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/audio/*.s16 $(1)/usr/share/slic/

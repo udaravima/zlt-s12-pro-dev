@@ -1,0 +1,30 @@
+#!/bin/sh
+# slic-dial UUID DIGITS - called by `slicctl daemon` when the handset has
+# dialled DIGITS. Asks Asterisk to start the call by dropping a call file:
+# Asterisk opens an AudioSocket channel back to the daemon (which is waiting
+# for this UUID), answers it, and runs [from-phone] DIGITS in the dialplan.
+# Exit status non-zero = the call can't be placed (the daemon plays busy).
+
+uuid=$1 digits=$2
+spool=/var/spool/asterisk
+addr=$(uci -q get slic.main.audiosocket || echo 127.0.0.1:4573)
+
+case $uuid in *[!0-9a-f-]*|"") echo "bad uuid" >&2; exit 2 ;; esac
+case $digits in *[!0-9*#A-D]*|"") echo "bad digits" >&2; exit 2 ;; esac
+[ -d "$spool/outgoing" ] || { echo "asterisk not running ($spool/outgoing missing)" >&2; exit 1; }
+pidof asterisk >/dev/null || { echo "asterisk not running" >&2; exit 1; }
+
+mkdir -p "$spool/tmp"
+f=$spool/tmp/slic-$uuid.call
+cat > "$f" <<CALL
+Channel: AudioSocket/$addr/$uuid/c(slin)
+CallerID: "Phone" <100>
+Context: from-phone
+Extension: $digits
+Priority: 1
+MaxRetries: 0
+WaitTime: 10
+CALL
+chown asterisk:asterisk "$f" 2>/dev/null
+# rename within one filesystem is atomic: Asterisk never sees a half file
+mv "$f" "$spool/outgoing/"

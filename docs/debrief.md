@@ -1,6 +1,6 @@
 # ZLT S12 Pro — Debrief
 
-*Written 2026-09-26 end-of-day, updated 2026-10-02. A from-the-beginning
+*Written 2026-09-26 end-of-day, updated 2026-10-02 and 2026-10-11. A from-the-beginning
 briefing for someone (including a future session) who needs the whole picture
 fast. Pointers go to the numbered docs; this file tells the story.*
 
@@ -12,7 +12,7 @@ router was full. Every expansion since then followed from one constraint:
 **16 MB router flash, 90% full, and a modem with spare NAND, RAM, and a
 root shell that nobody was using.**
 
-Scope grew in five phases, each documented in its own doc:
+Scope grew in seven phases, each documented in its own doc:
 
 1. **Inventory** — what both boxes actually are (docs 01–02).
 2. **Package storage design** — how to use the modem's spare space
@@ -20,6 +20,13 @@ Scope grew in five phases, each documented in its own doc:
 3. **Firmware dump** — brick insurance (doc 06).
 4. **Voice/SMS audit** — what the SIM and the RJ11 port can do (doc 07).
 5. **WWAN data link** — internet from the modem, done properly (doc 08).
+6. **RJ11 phone port revived** — the jack's SLIC chip turned out to hang off
+   the router, not the modem; two small kernel modules and Microsemi's API in
+   userspace make it ring, give dial tone, play audio and send caller ID
+   (docs 09, 10).
+7. **Home PBX** — Asterisk on the router, LAN-only, with the phone as
+   extension 100, SIP accounts for LAN devices and an AudioSocket hook for
+   apps and AI agents (doc 11).
 
 ## The two machines, in one paragraph each
 
@@ -67,6 +74,11 @@ bulk into the modem — it OOM-kills sshd.
   via dbus), the audio chain up to the CP is wired (CSFB mode), SMS must
   go via AT (`sms_tool`) because oFono has no SMS atom. Untested until we
   place a live call — no SIM in during the audio test window.
+- **RJ11 phone port + home PBX** (docs 09–11, 2026-10-08…11): ring with
+  caller ID, dial tone, keypad dialling, two-way calls through Asterisk 23
+  (LAN-only); dial 601/600/800 from the handset, call 100 to ring it; apps
+  on the LAN take calls over AudioSocket (ext 800). Installed as 3 packages,
+  survives reboot.
 
 ## The debugging stories worth retelling
 
@@ -129,6 +141,10 @@ than EDGE.)
   a vendor copy between Oct 1–2, wiping the Sep 26 SPTESTMODEM edit.
   Mechanism unknown; don't trust tz.profile edits to survive.
 - Docs: README = living status; numbered docs = historical records.
+- **Phone port loads late with a crash marker**, never from `/etc/modules.d`:
+  the kernel panics on oops, so an early crash would boot-loop the router.
+- **PBX stays LAN-only; `voip_br` (SLT VoIP VLAN) stays disabled** until the
+  owner decides on the SLT trunk. SIP passwords live only on the router.
 
 ## Persisted changes made to the devices (cumulative)
 
@@ -145,6 +161,13 @@ the usb0 gateway every minute (hardcoded IP — fragile). Modem
 "GSM only" (dbus flip), ModemManager running, usb2 link needs manual setup.
 Untouched by design: modem rootfs, ril.ini, firewall.
 
+Router, phone port and PBX (Oct 8–11): packages `slic-fxs`,
+`kmod-slic-spi-cs1`, `kmod-mt7621-pcm-raw` (service `S99slic`,
+`/etc/config/slic`); 32 `asterisk*` packages from the telephony feed,
+Asterisk enabled; `/etc/asterisk/{pjsip,extensions,rtp}.conf` from
+`slic-asterisk-setup` (stock copies kept as `*.stock`/`*.bak-*`), generated
+`pjsip_secrets.conf`; stock `/etc/asterisk` backed up in `/root/backups/`.
+
 ## Open items, in priority order
 
 1. **usb0 route-vanish** (Oct 2 regression): after a pppoe restart, wwan_4's
@@ -155,8 +178,11 @@ Untouched by design: modem rootfs, ril.ini, firewall.
    restart.
 2. **4G direction**: Dialog SIM test or antenna repositioning — the Oct 2
    test proved config can't fix it (coverage + SIM).
-3. **Voice/SMS exercise**: SMS round-trip via `sms_tool`, live call on
-   the RJ11 handset.
+3. **Voice/SMS exercise**: SMS round-trip via `sms_tool`. (The RJ11 handset
+   now works through the router's own SLIC and Asterisk, docs 09–11; GSM
+   voice through the modem is still untried.)
+3a. **PBX follow-ups** (doc 11 §11): a softphone on 201–203, echo
+   cancellation for apps, SLT SIP trunk (deferred).
 4. **Router hygiene**: luci-theme-bootstrap (1.5 MB = 45% of overlay),
    `*.bak-*` files, `.apk-new` orphans, duplicate `wwan` entries in the
    firewall zone.
@@ -181,7 +207,9 @@ Mobitel SIM roaming-denied there — needs Dialog SIM or antenna).
 
 ## Artifacts
 
-- `docs/` — this knowledge base (01–08 + README + this file)
+- `docs/` — this knowledge base (01–11 + README + this file)
+- `fxs/` — phone port and PBX: kernel modules, `slicctl` daemon,
+  packages, Asterisk templates, tools
 - `scripts/` — modem_send.py, router_dump_mtd.sh, modem_bench.py
 - `modem-fw-dump/` — mtd0–7 images + md5s (+ ofonod.bin strings
   copy, tz.profile backup)
