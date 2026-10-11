@@ -386,10 +386,11 @@ static void set_state(enum dstate *cur, enum dstate next)
 	fflush(stdout);
 }
 
-/* keep ~60 ms of busy tone queued: 425 Hz, 0.5 s on / 0.5 s off */
+/* keep ~60 ms of busy tone queued: Sri Lanka's, 425 Hz 0.75 s on / 0.75 s
+   off (ITU E.180 national tones list) */
 static void feed_busy_tone(void)
 {
-	static int t;		/* samples since busy began, mod 8000 */
+	static int t;		/* samples since busy began, mod 12000 (1.5 s) */
 	int q = 0, i;
 	int16_t s[FRAME];
 
@@ -398,8 +399,8 @@ static void feed_busy_tone(void)
 	busy_restart = 0;
 	if (ioctl(pcm, TIOCOUTQ, &q) || q > 960)
 		return;
-	for (i = 0; i < FRAME; i++, t = (t + 1) % 8000)
-		s[i] = t < 4000 ? (int16_t)(6000 * sin(2 * M_PI * 425 * t / 8000.0)) : 0;
+	for (i = 0; i < FRAME; i++, t = (t + 1) % 12000)
+		s[i] = t < 6000 ? (int16_t)(6000 * sin(2 * M_PI * 425 * t / 8000.0)) : 0;
 	if (write(pcm, s, sizeof(s)) < 0 && errno != EAGAIN)
 		perror("/dev/slicpcm");
 }

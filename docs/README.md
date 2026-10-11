@@ -19,7 +19,7 @@ The project outgrew its original goal. Timeline of scope:
 7. **Home PBX** — Asterisk 23 on the router, LAN-only: the RJ11 phone is
    extension 100 (dial out with the keypad, rings with caller ID), LAN
    devices log in over SIP (201–203), and apps / AI agents take calls over
-   AudioSocket (ext 800) (doc 11).
+   AudioSocket (ext 800) (doc 11; hands-on guide doc 12).
 
 ## Current state: home PBX (2026-10-11, verified live)
 
@@ -31,9 +31,9 @@ The project outgrew its original goal. Timeline of scope:
   dropped), **800** to a demo app on a LAN PC (beep + parrot, recording
   saved); **calls to 100** ring with caller ID, answer gives two-way audio;
   a caller hanging up mid-ring stops the bell.
-- **Not yet verified:** a real softphone on 201–203 calling or being called
-  by the handset (only the `sipp` test tool has authenticated and called
-  601).
+- **Softphone verified** (account 201 on a mobile over Wi-Fi): it rings the
+  handset with caller ID, and the handset dials it (`201#`), both with
+  two-way audio. Ringback/busy use Sri Lanka's tones (ITU E.180 list).
 - **Not done:** echo cancellation (an app hears its own voice ~30 dB down);
   handset keypresses during a call reach apps only as tones; SLT SIP trunk
   deferred, `voip_br` stays disabled.
@@ -162,6 +162,7 @@ repositioning toward Mobitel LTE coverage.
 | `09-phone-port-fxs.md` | RJ11 FXS port: Le9641 SLIC on the MT7621, firmware archaeology, kernel modules, clock switch, PCM bring-up, caller ID, how to reproduce |
 | `10-phone-port-architecture.md` | Phone port architecture + onboarding: components, interfaces, runtime flows, state machine, timing, design decisions, failure modes, labs, extension points |
 | `11-pbx-asterisk.md` | Home PBX: Asterisk on the router (apk), LAN-only SIP, the phone as extension 100 over AudioSocket, keypad DTMF detection, app/AI-agent hook (ext 800), pitfalls, SLT trunk plan |
+| `12-pbx-setup-guide.md` | PBX hands-on guide: install, everyday commands, every setting and where it lives, adding accounts and your own numbers, connecting softphones / desk phones / apps, test checklist, troubleshooting, backup, how it was set up here |
 | `debrief.md` | From-the-beginning briefing: status, stories, decisions, open items |
 
 ## Artifacts

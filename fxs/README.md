@@ -7,7 +7,8 @@ the router (the phone becomes extension 100). **Read [docs/09-phone-port-fxs.md]
 first**: it explains how the hardware works, how this was worked out, and the
 safety notes. The architecture/onboarding guide is
 [10-phone-port-architecture.md](../docs/10-phone-port-architecture.md);
-the PBX is [11-pbx-asterisk.md](../docs/11-pbx-asterisk.md).
+the PBX is [11-pbx-asterisk.md](../docs/11-pbx-asterisk.md)
+(hands-on guide: [12-pbx-setup-guide.md](../docs/12-pbx-setup-guide.md)).
 
 | Path | What |
 |---|---|
@@ -18,7 +19,7 @@ the PBX is [11-pbx-asterisk.md](../docs/11-pbx-asterisk.md).
 | `slicctl/dtmf.c` | Keypad (DTMF) detector on the handset audio |
 | `slicctl/asock.c` | AudioSocket framing: the daemon's link to Asterisk |
 | `slic-fxs/files/slic-dial` | Dial hook: turns dialled digits into an Asterisk call file |
-| `asterisk/` | LAN-only PBX templates (`pjsip.conf`, `extensions.conf`, `rtp.conf`) and `slic-asterisk-setup` |
+| `asterisk/` | LAN-only PBX templates (`pjsip.conf`, `extensions.conf`, `rtp.conf`, `indications-lk.conf`) and `slic-asterisk-setup` |
 | `tools/dtmf_test.py` | Offline DTMF detector test suite (`python3 tools/dtmf_test.py <host slicctl>`) |
 | `tools/audiosocket_demo.py` | Template AudioSocket app for extension 800 (beep + parrot, saves a .wav) |
 | `tools/extract_profiles.py` | Rebuilds `slicctl/stock_profiles.c` from a stock-firmware dump |

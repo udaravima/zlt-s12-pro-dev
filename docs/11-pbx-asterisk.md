@@ -4,6 +4,8 @@ Written 2026-10-11. Follows [09-phone-port-fxs.md](09-phone-port-fxs.md) (how
 the phone port was revived) and [10-phone-port-architecture.md](10-phone-port-architecture.md)
 (how its parts fit). Code: [`fxs/asterisk/`](../fxs/asterisk), the daemon in
 [`fxs/slicctl/`](../fxs/slicctl), the dial hook in `fxs/slic-fxs/files/slic-dial`.
+Hands-on setup, configuration and connecting devices:
+[12-pbx-setup-guide.md](12-pbx-setup-guide.md).
 
 ## TL;DR
 
@@ -34,10 +36,11 @@ the phone hardware.
 | Asterisk | call **100** | phone rings, caller ID shown (number + name), answer → two-way audio |
 | Asterisk | caller gives up while it rings | bell stops at once |
 | SIP test tool (sipp) on the LAN PC | call 601 as account 202 | password challenge passed, announcement played, call completes |
+| softphone on a mobile (Wi-Fi), account 201 | call **100** | handset rings, caller ID "201", answered, 24 s two-way call |
+| RJ11 handset | dial **201 #** | softphone rings, handset hears ringback, 17 s two-way call |
 
-**Not yet verified:** a real softphone (rather than a test tool) calling 100,
-and the handset calling a softphone on 201–203. The dialplan for both exists
-and is the same path as the tests above, but nobody has made those calls yet.
+**Not yet verified:** registering more than one device per account (the
+config allows 2), and the Sri Lanka ringback/busy tones (§2) on a live call.
 
 ---
 
@@ -105,13 +108,40 @@ It does five things, in order, and is safe to re-run:
 3. Fill the templates in `/usr/share/slic/asterisk/` into `/etc/asterisk/`
    (`pjsip.conf`, `extensions.conf`, `rtp.conf`). A changed existing file is
    kept as `*.bak-DATE`.
-4. Generate `/etc/asterisk/pjsip_secrets.conf`: a random 20-character
-   password per account, owner `asterisk`, mode 0600. Only on first run, or
-   with `--new-passwords`. **This file is never in git.**
+4. Accounts: keep every login already in `/etc/asterisk/pjsip_secrets.conf`,
+   add any in `ACCOUNTS` (201–203 on a first run) with a random 20-character
+   password, write the file (owner `asterisk`, mode 0600) and generate
+   `pjsip_accounts.conf` from it. `--new-passwords` replaces them all.
+   **The secrets file is never in git.**
 5. Enable and restart Asterisk, restart the phone daemon (so its FIFO gets
    the `asterisk` group), print the accounts.
 
-Options: `--no-apk` (modules already installed), `--new-passwords`.
+Options: `--no-apk` (modules already installed), `--new-passwords`,
+`ACCOUNTS="204 …"` (add SIP logins), `TONES=xx` (another country's tones,
+below). Re-runs keep passwords and the app address. Every knob is in doc 12.
+
+**Call-progress tones.** Ringback ("it's ringing"), busy and congestion are
+sounds Asterisk generates from `indications.conf`, and its default is the
+US set: a single long 440+480 Hz burst every 6 s. Asterisk ships no Sri
+Lanka entry, so the setup appends one (`fxs/asterisk/indications-lk.conf`)
+and sets `country=lk`. The values come from ITU's national tones list
+(Operational Bulletin 781 annex, E.180, position 1 Feb 2003):
+
+| Tone | Sri Lanka (ITU) | Asterisk default (us) |
+|---|---|---|
+| ringback | 425 Hz, 0.4 on 0.2 off 0.4 on 2.0 off (double ring) | 440+480 Hz, 2 on 4 off |
+| busy | 425 Hz, 0.75 on 0.75 off | 480+620 Hz, 0.5 on 0.5 off |
+| congestion | 425 Hz, 0.25 on 0.25 off | 480+620 Hz, 0.25 on 0.25 off |
+| dial | 425 Hz continuous | 350+440 Hz |
+
+Two tones don't come from Asterisk. The handset's **dial tone** is the SLIC's
+own generator, set by Tozed's stock tone profile (450 Hz, doc 09), 25 Hz
+above the ITU value; changing it means editing profile bytes, so it's left
+as Tozed shipped it. The **busy tone** the handset hears after a call ends
+comes from the daemon, which uses the same Sri Lanka values. Not yet
+matched: the **bell cadence** (the daemon rings 2 s on / 4 s off; Sri
+Lanka's is the double ring). Changing that moves the caller-ID slot, so it
+needs its own test on the phone.
 
 **Cost on this router** (measured with nothing in progress): Asterisk uses
 **16 MB resident** (40 MB virtual) of the 248 MB RAM; 132 MB stays
@@ -246,7 +276,8 @@ Because the handset's leg is already "answered", it can't receive call
 progress *signals* (ringing, busy) the way a SIP phone does. So the dialplan
 gives it *sounds*: `Dial(..., r)` plays ringback audio into the call while
 a SIP extension rings, and when the far end hangs up or is busy, the daemon
-plays its own **busy tone** (425 Hz, 0.5 s on / 0.5 s off, for 30 s).
+plays its own **busy tone** (Sri Lanka's: 425 Hz, 0.75 s on / 0.75 s off,
+for 30 s).
 
 The busy tone also covers every way an outgoing call can fail: the dial hook
 fails, Asterisk doesn't connect within 10 s, or the handset sits off-hook
@@ -459,12 +490,11 @@ trunk is just another place a call can come from.
 
 | Item | Why it matters | Next step |
 |---|---|---|
-| Softphone on 201–203, calls to and from 100 | the "other devices on the LAN" half of the goal, verified only with a test tool | Linphone/Zoiper on a phone or PC; credentials in `/etc/asterisk/pjsip_secrets.conf` on the router |
 | Echo cancellation | an AI agent hears itself (~30 dB down) and may mistake that for the caller interrupting | Speex/WebRTC AEC in the daemon, or in the app |
 | Handset keypresses during a call | apps on 800 get them only as tones | detect in the app, or have the daemon translate them into a dialplan action |
-| Ringback cadence | Asterisk uses US tones by default (`indications: us`) | set the country in `indications.conf` (the right local cadence is not yet checked) |
 | Long-call clock drift | the 100 ms cap would start dropping frames | log `frames dropped` on a 10-minute call |
 | Hook flash | could give transfer / call waiting | not handled; the daemon sees it as a short on-hook |
+| Bell cadence | the phone rings 2 s on / 4 s off (US style); Sri Lanka uses a double ring | change the daemon's cadence, re-test caller ID timing |
 
 ## How obtained
 

@@ -74,7 +74,7 @@ bulk into the modem — it OOM-kills sshd.
   via dbus), the audio chain up to the CP is wired (CSFB mode), SMS must
   go via AT (`sms_tool`) because oFono has no SMS atom. Untested until we
   place a live call — no SIM in during the audio test window.
-- **RJ11 phone port + home PBX** (docs 09–11, 2026-10-08…11): ring with
+- **RJ11 phone port + home PBX** (docs 09–12, 2026-10-08…11): ring with
   caller ID, dial tone, keypad dialling, two-way calls through Asterisk 23
   (LAN-only); dial 601/600/800 from the handset, call 100 to ring it; apps
   on the LAN take calls over AudioSocket (ext 800). Installed as 3 packages,
@@ -181,8 +181,8 @@ Asterisk enabled; `/etc/asterisk/{pjsip,extensions,rtp}.conf` from
 3. **Voice/SMS exercise**: SMS round-trip via `sms_tool`. (The RJ11 handset
    now works through the router's own SLIC and Asterisk, docs 09–11; GSM
    voice through the modem is still untried.)
-3a. **PBX follow-ups** (doc 11 §11): a softphone on 201–203, echo
-   cancellation for apps, SLT SIP trunk (deferred).
+3a. **PBX follow-ups** (doc 11 §11): echo cancellation for apps, the
+   Sri Lanka bell cadence, SLT SIP trunk (deferred).
 4. **Router hygiene**: luci-theme-bootstrap (1.5 MB = 45% of overlay),
    `*.bak-*` files, `.apk-new` orphans, duplicate `wwan` entries in the
    firewall zone.
@@ -207,7 +207,7 @@ Mobitel SIM roaming-denied there — needs Dialog SIM or antenna).
 
 ## Artifacts
 
-- `docs/` — this knowledge base (01–11 + README + this file)
+- `docs/` — this knowledge base (01–12 + README + this file)
 - `fxs/` — phone port and PBX: kernel modules, `slicctl` daemon,
   packages, Asterisk templates, tools
 - `scripts/` — modem_send.py, router_dump_mtd.sh, modem_bench.py
