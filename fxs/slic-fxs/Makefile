@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=slic-fxs
 PKG_VERSION:=2026.10.11
-PKG_RELEASE:=3
+PKG_RELEASE:=4
 PKG_LICENSE:=GPL-2.0-only
 
 # fxs/ checkout this package lives in (the SDK sees it through a symlink)

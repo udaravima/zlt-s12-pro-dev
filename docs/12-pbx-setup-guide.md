@@ -315,14 +315,52 @@ Two ways in:
 | Way | When | How |
 |---|---|---|
 | **AudioSocket via 800** | you want raw audio and no SIP stack | listen on TCP, run `APP=yourhost:port slic-asterisk-setup --no-apk`, dial 800. Protocol and traps in doc 11 §8; template `fxs/tools/audiosocket_demo.py` |
-| **As a SIP account** | your program already speaks SIP (pjsua2, baresip, a voice-AI platform's SIP connector) | give it an account (`ACCOUNTS=204 …`); it calls and is called like a softphone, and gets keypresses as RFC 4733 events |
+| **As a SIP account** | your program should call out, be called by number, or get clean keypress events | give it an account (`ACCOUNTS=204 …`); it behaves like a softphone. Template `fxs/tools/sip_bot.py` (below) |
 
-Run the demo on a PC to see the AudioSocket path work end to end:
+**AudioSocket sample** (beep, then your voice back 1 s later):
 
 ```sh
 python3 fxs/tools/audiosocket_demo.py --listen 0.0.0.0:9092
-# then dial 800# on the handset: a beep, then your own voice 1 s later
+# then dial 800 on the handset
 ```
+
+**SIP sample: `fxs/tools/sip_bot.py`.** A complete SIP phone in one Python
+file with no dependencies (Python 3.10+; works on 3.14, which dropped the
+`audioop` module that older pure-Python SIP libraries need). It does what
+any SIP app does, so it's the place to read how the pieces fit: log in
+(REGISTER with the password challenge), answer or place calls (INVITE /
+ACK / BYE), describe its audio (SDP), send and receive 20 ms G.711 audio
+packets (RTP), and read keypresses (RFC 4733).
+
+```sh
+export SIP_PASSWORD=…          # grep -A3 '202-auth' /etc/asterisk/pjsip_secrets.conf
+# answering machine: beep, parrot, records each call to sip-<id>.wav;
+# keypad presses are printed and '#' hangs up
+python3 fxs/tools/sip_bot.py --server 192.168.1.254 --user 202 listen
+# notifier: ring the RJ11 phone, play a chime (or --play msg.wav), hang up
+python3 fxs/tools/sip_bot.py --server 192.168.1.254 --user 202 call 100
+python3 fxs/tools/sip_bot.py --server 192.168.1.254 --user 202 call 100 --play msg.wav
+```
+
+*Verified 2026-10-11:* logged in as 202; called 601 and recorded "hello
+world … goodbye"; called `601#`; answered a call from the router and
+recorded it. Not yet tried: `call 100` (rings the handset).
+
+What each sample is a starting point for:
+
+| Idea | Start from | Add |
+|---|---|---|
+| doorbell / server alert rings the phone | `sip_bot.py call 100 --play alert.wav` | text-to-speech to make the WAV (e.g. `espeak-ng -w out.wav` then convert to 8 kHz) |
+| answering machine / voicemail | `sip_bot.py listen` | play a greeting instead of the parrot; it already records |
+| phone menu ("press 1 for…") | `sip_bot.py listen` | act on the printed keys (SIP callers; the RJ11 handset's keys travel as tones, doc 11 §6) |
+| AI voice agent | either sample | speech-to-text on what arrives, a model, text-to-speech into the outgoing buffer; 8 kHz audio (doc 11 §8.1); echo (doc 11 §7) |
+
+For something bigger than a sample, use a maintained SIP stack instead of
+growing this one (none of these was tried with this PBX yet):
+**pjsua2** (PJSIP's C++/Python API, the same SIP library Asterisk uses),
+**baresip** (small command-line SIP client, scriptable), **liblinphone**
+(the engine inside Linphone). Voice-AI frameworks with a SIP connector can
+log in as an account the same way.
 
 ### 5.5 Something on the other side of the router (a different subnet)
 
@@ -358,12 +396,14 @@ After each, `logread -e slicctl | tail` should end with `0 frames dropped`.
 | Digits not heard (log shows no `digit` lines) | phone in pulse mode; very weak keypad | set the phone to tone (DTMF) dialling; doc 10 §8 |
 | Number dialled too early | you paused > 3 s | dial faster, end with `#`, or raise `dial_timeout` |
 | "That is not a valid extension" | number not in the plan | §1, §4.5 |
+| You hear your own voice faintly on a softphone | line echo from the analog phone side (no canceller yet) | doc 11 §7 |
 | Calls to 100 get busy at once | handset off-hook or line not idle; FIFO permissions | `cat /var/run/slic.state`; `ls -l /var/run/slic.ctl` |
 | Softphone: "registration failed", 401/403 | wrong password or username; device not on the LAN subnet | `tail /var/log/asterisk/messages.log` (`Failed to authenticate` = password; `Not match Endpoint ACL` = wrong network) |
 | Softphone registered, but no audio | codec mismatch, or a firewall on the device | enable PCMU/PCMA; `asterisk -rvvv` during the call |
 | Softphone doesn't ring on incoming calls | app asleep (mobile), PC firewall | keep the app open; §5.2 |
 | One-way audio between softphone and handset | the device sends to a wrong address (STUN on) | turn STUN/ICE off |
 | Extension 800: call drops after ~2 s | your app isn't sending audio continuously | send silence frames every 20 ms (doc 11 §8.1) |
+| Softphone: number ending in `#` rejected | (fixed 2026-10-11) softphones send `#` as part of the number | `[from-lan]` now drops a trailing `#` |
 | Log: "no local system nameservers" | harmless | — |
 | Log: "The canary is no more" | harmless: Asterisk lowered its priority | — |
 

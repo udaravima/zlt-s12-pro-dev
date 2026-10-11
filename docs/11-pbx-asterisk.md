@@ -376,6 +376,69 @@ softphone). For an app it's a real problem: an AI agent hears a faint copy
 of its own speech, which can look like the caller interrupting. There is
 **no echo canceller yet** (doc 10 §10).
 
+### 7.1 Echo cancellation: what it is and how we'd add it
+
+There are two different echoes in a call, and they need cancellers in
+different places:
+
+| Echo | Where it starts | Who hears it | Who cancels it |
+|---|---|---|---|
+| **Acoustic** | a phone's loudspeaker is picked up by its own microphone (worst on speakerphone) | the person at the *other* end | that phone, e.g. Linphone's "echo cancellation" option |
+| **Line (hybrid)** | the analog line carries both directions on one pair of wires; the SLIC separates them imperfectly, so part of what it plays leaks into what it hears | the person at the *other* end: here, the softphone user or the app | the equipment at the analog line, i.e. **this router** |
+
+So Linphone's option is worth keeping on (it protects whoever talks to the
+mobile), but it can't remove this router's line echo: that echo arrives
+inside the audio Linphone receives, and Linphone's canceller only cleans
+what its own microphone picks up.
+
+An echo canceller is an adaptive filter. It keeps the last few
+milliseconds of what was sent to the line, learns how the line turns that
+into echo (a short impulse response), predicts the echo in what comes
+back, and subtracts it. It needs two things: the sent and received samples
+**aligned in time**, and an echo delay **shorter than its filter**. A
+non-linear processor (NLP) then suppresses the small residue when only the
+far end is talking.
+
+**Findings (2026-10-11):**
+
+- **No hardware fix is configured.** The SLIC can shape its own echo with
+  an *AC profile* (line impedance and the trans-hybrid balance filter). We
+  load none (`VpInitDevice(…, VP_PTABLE_NULL, …)`), and the stock firmware
+  holds none either: every Profile Wizard header in Tozed's `mislic` is a
+  device, DC, ring or tone profile. Tozed relied on a software canceller:
+  its call program `tz_phone` contains WebRTC's mobile echo canceller
+  (AECM), seen in the binary's strings during the 2026-10-08 firmware
+  analysis. Microsemi's reference package
+  has 600 Ω AC profiles for related ZL880 boards and Profile Wizard project
+  files for two miSLIC boards; their coefficients depend on the board's
+  protection components, so using one here would be an experiment to
+  measure, not a fix.
+- **The Linux kernel's line echo canceller, OSLEC, is ready to use.** It
+  lives in `drivers/misc/echo`, OpenWrt builds it for this exact kernel as
+  `kmod-echo` (official package), and it exports `oslec_create`,
+  `oslec_update`, `oslec_flush`, `oslec_free`, `oslec_adaption_mode`,
+  `oslec_hpf_tx`. It was written for this job (analog phone ports via
+  DAHDI), runs in fixed-point (this CPU has no FPU), per sample.
+- **The right place is the PCM driver's 250 µs tick** (`pcm_tick()`), where
+  each sample goes to the SLIC and each sample comes back with a *fixed*
+  delay of a few milliseconds. In the daemon, by contrast, the outgoing
+  queue holds 0–100 ms that varies with clock drift, and a canceller can't
+  track a moving delay.
+- **CPU:** a 128-tap filter (16 ms of echo) costs on the order of a few
+  million multiply-adds per second, under 1 % of one 880 MHz core
+  (estimate, not measured).
+
+**Plan:**
+
+1. **Measure first:** with the handset lifted and silent, play noise into
+   the line and record the return. That gives the echo's level and delay,
+   and a before/after number.
+2. Add OSLEC to `mt7621_pcm_raw` (module parameter `ec=0|1`, filter length;
+   `DEPENDS:=+kmod-echo`), cleaning each received sample against the sample
+   sent at the same tick; reset it at the start of each call.
+3. Measure again (echo return loss enhancement; target ≥ 20 dB better), then
+   check by ear on a softphone call, with the NLP on and off.
+
 **Levels** (same 800 test): speech arrived at −28 to −36 dBFS RMS, with
 −57 to −60 dBFS between words. That is normal telephone level with a quiet
 line, and fine for speech-to-text without extra gain.
@@ -490,7 +553,7 @@ trunk is just another place a call can come from.
 
 | Item | Why it matters | Next step |
 |---|---|---|
-| Echo cancellation | an AI agent hears itself (~30 dB down) and may mistake that for the caller interrupting | Speex/WebRTC AEC in the daemon, or in the app |
+| Echo cancellation | the far end (softphone, app) hears itself ~30 dB down; an AI agent may mistake it for the caller interrupting | OSLEC (`kmod-echo`) in the PCM driver's tick; plan in §7.1 |
 | Handset keypresses during a call | apps on 800 get them only as tones | detect in the app, or have the daemon translate them into a dialplan action |
 | Long-call clock drift | the 100 ms cap would start dropping frames | log `frames dropped` on a 10-minute call |
 | Hook flash | could give transfer / call waiting | not handled; the daemon sees it as a short on-hook |
