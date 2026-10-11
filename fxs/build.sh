@@ -26,8 +26,12 @@ REPO=$(cd "$HERE/.." && pwd)
 sed -i '/^src-link zltphone /d' "$SDK/feeds.conf"
 echo "src-link zltphone $REPO" >> "$SDK/feeds.conf"
 rm -f "$SDK/package/kmod-slic-mt7621" "$SDK/package/slic-fxs"	# old direct symlinks
-(cd "$SDK" && ./scripts/feeds update -i zltphone >/dev/null &&
+# full update (not -i): only that recreates feeds/zltphone -> $REPO
+(cd "$SDK" && ./scripts/feeds update zltphone >/dev/null &&
 	./scripts/feeds install -p zltphone kmod-slic-spi-cs1 kmod-mt7621-pcm-raw slic-fxs >/dev/null)
+linked=$(readlink -f "$SDK/feeds/zltphone")
+[ "$linked" = "$REPO" ] || { echo "SDK feed zltphone -> $linked, expected $REPO"; exit 1; }
+echo "feed zltphone -> $linked"
 grep -q '^CONFIG_PACKAGE_kmod-mt7621-pcm-raw=m' "$SDK/.config" 2>/dev/null || {
 	make -C "$SDK" defconfig >/dev/null
 	printf 'CONFIG_PACKAGE_kmod-slic-spi-cs1=m\nCONFIG_PACKAGE_kmod-mt7621-pcm-raw=m\n' >> "$SDK/.config"

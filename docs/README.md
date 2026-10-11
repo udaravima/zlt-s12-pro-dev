@@ -22,8 +22,9 @@ The project outgrew its original goal. Timeline of scope:
 - **Installed as packages (`slic-fxs` + 2 kmods), service starts at boot**
   with a boot-loop failsafe; `slicctl daemon` gives dial tone on lift, rings
   on `echo "ring 20" > /var/run/slic.ctl`, plays clips with `slic-play`.
-  End-to-end ring → answer → clip → dial tone verified, and it **survives a
-  reboot**. Buildable by other owners as an OpenWrt feed from this repo.
+  End-to-end ring → answer → clip → dial tone verified, it **survives a
+  reboot**, and **caller ID works** (Bellcore FSK, shown on a Uniden AS7412,
+  2026-10-11). Buildable by other owners as an OpenWrt feed from this repo.
 - **Working:** SLIC detected (`PCN 0x49`, Le9641
   rev 8); init and calibration with Tozed's own profiles; **phone rings**,
   **450 Hz dial tone heard**, hook on/off reported; **audio clips play** through
@@ -31,8 +32,8 @@ The project outgrew its original goal. Timeline of scope:
 - **Key facts:** SLIC on SPI0 CS1 (mode 0); PCM on GPIO 9–12; GPIO 32
   `slic_clk_switch`: 0 = router PCM, 1 = modem PCM; the MT7621 audio PLL must
   be programmed or no clock reaches the SLIC.
-- **Not done:** DTMF dialling in the daemon, caller ID (plan: software FSK
-  over the proven PCM path, doc 09 §14), SIP (deferred while the router
+- **Not done:** DTMF dialling in the daemon, confirming the V.23/DTMF
+  caller-ID variants on a phone, SIP (deferred while the router
   carries the household internet). Not upstreamable to OpenWrt as is
   (Microsemi licence; doc 09 §13).
 
@@ -137,7 +138,8 @@ repositioning toward Mobitel LTE coverage.
 | `06-fw-dump.md` | Full NAND dump: method, verification, pitfalls |
 | `07-voice-sms.md` | Voice/SMS/VoIP: AT channel, oFono, SIM state, RJ11 wiring, SLT VLAN probe |
 | `08-wwan-ncm-data.md` | WWAN data link: ncm proto architecture, SPTZCMD dial mechanism, no-dial bug, routing metrics |
-| `09-phone-port-fxs.md` | RJ11 FXS port: Le9641 SLIC on the MT7621, firmware archaeology, kernel modules, clock switch, PCM bring-up, how to reproduce |
+| `09-phone-port-fxs.md` | RJ11 FXS port: Le9641 SLIC on the MT7621, firmware archaeology, kernel modules, clock switch, PCM bring-up, caller ID, how to reproduce |
+| `10-phone-port-architecture.md` | Phone port architecture + onboarding: components, interfaces, runtime flows, state machine, timing, design decisions, failure modes, labs, extension points |
 | `debrief.md` | From-the-beginning briefing: status, stories, decisions, open items |
 
 ## Artifacts

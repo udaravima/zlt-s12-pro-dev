@@ -27,6 +27,8 @@ a userspace control tool run Microsemi's own SLIC library.
 | SIP calls | ❌ not started | Deliberately deferred: the router carries the household internet |
 | Installed as packages, starts at boot | ✅ works, survives reboot | `slic-fxs` + 2 kmod packages; service enabled (`S99slic`); daemon runs the line (§10) |
 | Ring → answer → play clip → dial tone, via the service | ✅ works | Owner picked up after 10 s; daemon log shows ring → talk → playback → dial tone → idle |
+| **Caller ID (Bellcore FSK, MDMF)** | ✅ works | Number shown on a Uniden AS7412 (Asia model) after the first ring; also decoded from a line loopback capture (§14) |
+| Caller ID, V.23 FSK / DTMF variants | 🟡 implemented, not confirmed | Generated and decoded correctly offline; loopback decode failed/garbled; not tried on the phone |
 
 ---
 
@@ -351,6 +353,12 @@ the installed service (§10).
 | PCM source clock | clk framework says 270 MHz; the audio PLL gives ~294 MHz | `setup_pll=1`, `freqin=294000000` (module defaults) |
 | `pkill -f pattern` in a shell | kills the shell running it | match the process another way |
 | Router busybox | no `timeout`, `sleep` takes whole seconds | avoid both |
+| `./scripts/feeds update -i` on a `src-link` feed | only re-indexes; the `feeds/<name>` link keeps pointing at the **old** checkout, so the SDK silently builds stale sources | `build.sh` runs a full `feeds update` and aborts unless `feeds/zltphone` resolves to its own checkout |
+| `./build.sh \| grep …` | the pipeline reports grep's exit status, so a failed build looks successful | run `build.sh` on its own and check `$?`; read `build/*-build.log` |
+| Replacing `/usr/sbin/slicctl` while the daemon runs | `Text file busy` | `/etc/init.d/slic stop`, copy, start (or install the package) |
+| A hand-copied test binary | the package database and the file disagree; the next upgrade silently replaces it | test with hand copies, but ship by installing the rebuilt package |
+| SLIC timestamp-rollover event | logged every ~32 s, drowning real events in syslog | the daemon ignores `VP_DEV_EVID_TS_ROLLOVER` |
+| Python `open(p,'w').write(f(open(p).read()))` | `open(p,'w')` runs first and truncates the file before it's read | read into a variable, then write (bit the public exporter once) |
 
 ---
 
@@ -430,8 +438,9 @@ Module parameters (`modinfo mt7621_pcm_raw.ko`): `setup_pll` (default 1),
 
 ## 9. What's left
 
-1. ~~Persistence~~, ~~a long-running daemon~~, ~~reboot test~~: done (§10).
-   Remaining: DTMF digit collection in the daemon (for dialling), caller ID (§14).
+1. ~~Persistence~~, ~~a long-running daemon~~, ~~reboot test~~ (§10), ~~caller
+   ID~~ (§14): done. Remaining: DTMF digit collection in the daemon (for
+   dialling); confirming the V.23 and DTMF caller-ID variants on a phone.
 2. **SIP** (deferred): baresip or Asterisk on top of `/dev/slicpcm`, with echo
    cancellation. Wait until a failed experiment can't take the home internet
    down.
@@ -481,6 +490,9 @@ Worst case: one crashed boot, then the next boot is clean.
 | handset lifted while ringing | ringing stops, line goes to TALK ("answered") |
 | `echo talk > /var/run/slic.ctl` | TALK state: PCM audio reaches the handset, tone off |
 | `echo release > /var/run/slic.ctl` | back to dial tone (if off-hook) or standby |
+| `echo "ring 20 0771234567 NAME" > /var/run/slic.ctl` | ring **with caller ID** (number up to 20 digits, name up to 15 characters, no spaces) |
+| `echo "cidfmt bell" > /var/run/slic.ctl` | caller-ID format until restart: `bell`, `v23` or `dtmf` (persistent default: uci `slic.main.cid_format`) |
+| `echo "cidsend 0771234567 NAME" > /var/run/slic.ctl` | caller-ID burst only, no ringing (testing; many phones still show it) |
 
 Current state: `cat /var/run/slic.state` (`state=idle|dialtone|ringing|talk`,
 `hook=on|off`). Logs: `logread -e slicctl`. `slic-play FILE.s16` wraps
@@ -585,7 +597,7 @@ PCM ASoC driver (achievable), then an open Le9641 driver (hard).
 
 ---
 
-## 14. Caller ID: how it works, and how it could work here
+## 14. Caller ID: how it works, and how it's done here
 
 ### How analog caller ID works
 
@@ -602,7 +614,12 @@ An FSK burst is: channel seizure (alternating 0/1 bits), a run of mark bits,
 then a message. The **MDMF** format carries parameters: date/time
 (`MMDDHHMM`), number, name, each as type-length-value, plus a checksum. Many
 modern phones auto-detect more than one variant. Which one Sri Lankan phones
-expect, and what this handset decodes, is **not verified yet**.
+expect was unknown at the start. **Verified 2026-10-11: the owner's Uniden
+AS7412 (Asia model) displays Bellcore FSK / MDMF.** The owner's manual for
+the same family (AS7413, Singapore distributor) lists "DTMF/FSK Caller ID",
+so the other variants may work too (not tested). The same manual gives the
+phone's hook-flash options (90/95/100/120/180/300/600/1000 ms, default
+600 ms), which matters once the daemon detects flash.
 
 ### What the hardware and stock firmware do
 
@@ -617,21 +634,77 @@ expect, and what this handset decodes, is **not verified yet**.
 - **Our VP-API copy is the "lite" edition and lacks `vp886_seq.c`**, so the
   API's `VpInitCid`/`VpSendCid` path isn't available here.
 
-### The plan that fits what we have
+### What we built: caller ID in software
 
-We already have a proven audio path into the line (§5.6). Caller ID can be
-done **in software**: generate the FSK burst (or DTMF digits) as 8 kHz audio
-and play it through `/dev/slicpcm` during the ring cycle:
+The audio path into the line is already proven (§5.6), so caller ID is
+**generated as 8 kHz audio and played through `/dev/slicpcm`** at the right
+moment in the ring cycle, with the line in on-hook transmission. No
+Microsemi sequencer needed.
 
-1. Daemon command `ring <secs> <number>`: ring once (Bellcore timing), then
-   switch the line to `VP_LINE_OHT` (on-hook transmission).
-2. Play the MDMF burst (generated with Bell 202 or V.23 tones), then resume
-   ringing.
-3. Try Bellcore first. If the handset shows nothing, switch to the V.23 tones
-   or DTMF CID. A config option selects the variant.
+**Pieces** (all in `fxs/slicctl/`):
 
-The same mechanism serves SIP later: the SIP INVITE's caller number goes into
-the burst.
+| File | Role |
+|---|---|
+| `cid.c` / `cid.h` | Signal generator: MDMF message builder (date/time `MMDDHHMM` from the router clock, number, optional name, checksum), 1200-baud phase-continuous FSK (Bell 202 or V.23 tones), DTMF `D…C` |
+| `slicctl.c` | `cidgen` command (writes a signal to stdout, no hardware); daemon `ring … NUMBER [NAME]`, `cidfmt`, `cidsend` |
+| `../tools/cid_decode.py` | **Independent** decoder (different language and method: tone correlation + UART framing + checksum), for generated files and line captures |
+
+**Signal details** (what a reader of `cid.c` needs to know):
+
+- FSK runs at 1200 baud; at 8 kHz that's 6.667 samples per bit, so the
+  generator carries the fractional remainder from bit to bit, and keeps the
+  sine phase continuous across bits (a phase jump would splatter energy
+  across the band).
+- Frame: 300 bits channel seizure (`0101…`), 180 mark bits, then each byte
+  as start bit `0`, 8 data bits LSB first, stop bit `1`, then 10 trailing
+  marks. The Bellcore burst for a 10-digit number plus a 6-letter name is
+  **0.68 s**.
+- Level: 0.25 of full scale (about −12 dBFS), adjustable with the
+  environment variable `SLIC_CID_LEVEL`.
+
+**Timing in the daemon:**
+
+| Format | Sequence |
+|---|---|
+| `bell` (default) | ring 2 s → **wait 0.6 s** (GR-30 asks for at least 0.5 s) → line `VP_LINE_OHT` → burst → +0.3 s margin → standby → the cadence continues (4 s off total, then ring) |
+| `v23`, `dtmf` | line `VP_LINE_OHT_POLREV` (polarity reversal, the usual "caller ID coming" alert) → wait 0.3 s → burst → +0.3 s → standby with normal polarity → **then** the first ring |
+
+`write()` to `/dev/slicpcm` returns once the samples are queued (the driver
+buffers 0.5 s), so the daemon computes the burst's end time from its length
+instead of waiting on the write.
+
+### How it was verified
+
+1. **Generator vs independent decoder, offline**:
+   `slicctl cidgen bell 0771234567 UNIDEN > cid.s16`, then
+   `cid_decode.py cid.s16 bell` gives `type 0x80 (MDMF) … checksum OK`, the
+   date/time, `0771234567` and `UNIDEN`. V.23 and DTMF decode just as cleanly
+   (DTMF: `D0771234567C`).
+2. **Line loopback, no ringing**: while `cidsend` played the burst, the
+   driver recorded the echo coming back from the line, and that recording
+   was decoded on the PC:
+
+   | Format | Loopback result |
+   |---|---|
+   | bell | ✅ full MDMF decoded, checksum OK, name `LOOPBACK` |
+   | v23 | ❌ nothing decoded |
+   | dtmf | 🟡 garbled (`1D077123425647C`) |
+
+   The v23/dtmf runs use the reversed-polarity state. Whether their echo is
+   simply weaker or distorted (a decoder problem) or the signal on the line
+   is really damaged is **not established**.
+3. **On the phone**: `ring 20 0771234567 UNIDEN` → the first ring, then the
+   burst 0.6 s later (daemon log: `caller ID bell '0771234567' sent (0.68 s)`)
+   → **the Uniden displayed the caller ID** (owner confirmed).
+4. **Packaged release** (`slic-fxs 2026.10.11`, installed with `apk`):
+   `cidsend 0771234567 PACKAGED` recorded off the line decodes to MDMF,
+   checksum OK, with the router's **local** time (`10110930`), so the
+   timezone reaches the phone's display.
+
+### Applying it later
+
+SIP (or any application) only has to pass the caller's number in the ring
+command: `ring 30 <number> <name>`.
 
 ## References
 

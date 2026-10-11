@@ -14,7 +14,7 @@ reproduce it. Each document has a "How obtained" section with the commands.
 
 | Topic | Result | Doc |
 |---|---|---|
-| **RJ11 phone port** | Dead on OpenWrt → **rings, dial tone, hook detection, audio playback**, packaged and boot-safe | [09](docs/09-phone-port-fxs.md), code in [`fxs/`](fxs) |
+| **RJ11 phone port** | Dead on OpenWrt → **rings, caller ID, dial tone, hook detection, audio playback**, packaged and boot-safe | [09](docs/09-phone-port-fxs.md), [10](docs/10-phone-port-architecture.md), code in [`fxs/`](fxs) |
 | Modem as a peer | Root shell, dedicated NCM link to the router (~6–19 MB/s), modem-side tooling | [03](docs/03-interconnect.md), [05](docs/05-expansion.md) |
 | Full modem firmware dump | 128 MB NAND dumped over USB, md5-verified; method and pitfalls | [06](docs/06-fw-dump.md) |
 | WWAN data link | NCM dial path fixed; metric-based failover between PPPoE and LTE | [08](docs/08-wwan-ncm-data.md) |
@@ -33,7 +33,8 @@ reproduce it. Each document has a "How obtained" section with the commands.
 | [06-fw-dump](docs/06-fw-dump.md) | Full NAND dump: method, verification, pitfalls |
 | [07-voice-sms](docs/07-voice-sms.md) | Voice/SMS: AT channel, oFono, SIM, network registration |
 | [08-wwan-ncm-data](docs/08-wwan-ncm-data.md) | WWAN data link: ncm proto, dial mechanism, routing metrics |
-| [09-phone-port-fxs](docs/09-phone-port-fxs.md) | RJ11 FXS port: Le9641 SLIC on the MT7621, kernel modules, PCM, caller-ID plan |
+| [09-phone-port-fxs](docs/09-phone-port-fxs.md) | RJ11 FXS port: Le9641 SLIC on the MT7621, firmware archaeology, kernel modules, PCM, caller ID |
+| [10-phone-port-architecture](docs/10-phone-port-architecture.md) | Phone port architecture + onboarding: interfaces, flows, state machine, timing, design decisions, labs |
 | [debrief](docs/debrief.md) | From-the-beginning briefing |
 
 ## Phone port quick start
@@ -53,7 +54,8 @@ ssh root@ROUTER 'apk add --allow-untrusted /tmp/kmod-slic-spi-cs1-*.apk \
     /tmp/kmod-mt7621-pcm-raw-*.apk /tmp/slic-fxs-*.apk'
 ```
 
-Then lift the handset for dial tone, `echo "ring 15" > /var/run/slic.ctl`, or
+Then lift the handset for dial tone, `echo "ring 15 0123456789 NAME" > /var/run/slic.ctl`
+(ring with caller ID), or
 `slic-play /usr/share/slic/scale_c4_c5.s16`. As an OpenWrt feed:
 `src-git zltphone https://github.com/udaravima/zlt-s12-pro-dev.git` (doc 09 §12).
 

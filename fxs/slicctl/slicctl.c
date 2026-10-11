@@ -7,9 +7,14 @@
  *   slicctl tone [sec]      init, line ACTIVE, internal tone generator on
  *   slicctl monitor [sec]   print hook events; tone while off-hook
  *   slicctl talk [sec]      init, line TALK, 16-bit linear PCM on timeslot 0
+ *   slicctl cidgen FMT NUM [NAME]  write a caller-ID signal (s16 8 kHz) to stdout;
+ *                           FMT = bell | v23 | dtmf (no hardware access)
  *   slicctl daemon          keep the line ready: dial tone while off-hook,
  *                           commands on the FIFO /var/run/slic.ctl:
- *                             ring [sec]  ring with 2 s on / 4 s off cadence
+ *                             ring [sec [number [name]]]  ring, 2 s on / 4 s off,
+ *                                         with caller ID if a number is given
+ *                             cidfmt bell|v23|dtmf  caller-ID format
+ *                             cidsend number [name]  caller-ID burst only (test)
  *                             talk        line to TALK (PCM audio), tone off
  *                             release     back to dial tone / standby by hook
  *                           state in /var/run/slic.state
@@ -31,6 +36,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "vp_api.h"
+#include "cid.h"
 
 extern int SlicHalOpen(const char *path);
 extern int SlicHalXfer(const uint8 *tx, int txLen, uint8 *rx, int rxLen);
@@ -73,6 +79,9 @@ static int wait_event(VpEventCategoryType cat, uint16 id, double timeout)
 	while (now() < end) {
 		devObj.pendingInterrupt = TRUE;	/* simple polled mode */
 		while (VpGetEvent(&devCtx, &ev)) {
+			/* timestamp rollover fires every ~32 s: housekeeping, not news */
+			if (ev.eventCategory == VP_EVCAT_SIGNALING && ev.eventId == VP_DEV_EVID_TS_ROLLOVER)
+				continue;
 			printf("[%7.3f] %-9s id=0x%04X data=0x%04X ch=%d\n", now(),
 			       cat_name(ev.eventCategory), ev.eventId, ev.eventData,
 			       ev.channelId);
@@ -178,6 +187,36 @@ static int dev_init(void)
 	return 0;
 }
 
+/* Caller-ID samples for the given format; returns count (0 on bad input). */
+static int cid_samples(const char *fmt, const char *num, const char *name, int16_t *buf, int max)
+{
+	double amp = getenv("SLIC_CID_LEVEL") ? atof(getenv("SLIC_CID_LEVEL")) : 0.25;
+	uint8_t msg[64];
+	int len;
+
+	if (!strcmp(fmt, "dtmf"))
+		return cid_dtmf(buf, max, num, amp);
+	len = cid_build_mdmf(msg, sizeof(msg), num, name);
+	if (len < 0)
+		return 0;
+	return cid_fsk(buf, max, msg, len, !strcmp(fmt, "v23"), amp);
+}
+
+static int cmd_cidgen(int argc, char **argv)
+{
+	static int16_t buf[8000 * 3];
+	int n;
+
+	if (argc < 4) {
+		fprintf(stderr, "usage: slicctl cidgen bell|v23|dtmf NUMBER [NAME] > out.s16\n");
+		return 1;
+	}
+	n = cid_samples(argv[2], argv[3], argc > 4 ? argv[4] : NULL, buf, sizeof(buf) / 2);
+	fwrite(buf, 2, n, stdout);
+	fprintf(stderr, "%d samples (%.2f s)\n", n, n / 8000.0);
+	return n ? 0 : 1;
+}
+
 /* ---------------- daemon ---------------- */
 
 #define CTL_FIFO	"/var/run/slic.ctl"
@@ -239,6 +278,12 @@ static int cmd_daemon(void)
 	enum dstate st = D_IDLE;
 	double ring_end = 0, cad_next = 0;
 	int ring_on = 0, was_offhook = 0, ctl, dummy;
+	/* caller ID: bell = after the 1st ring; v23/dtmf = before it, after a
+	   polarity reversal. Format from SLIC_CID_FMT or the "cidfmt" command. */
+	char cid_fmt[8] = "bell", cid_num[24] = "", cid_name[16] = "";
+	double cid_at = 0, cid_done_at = 0;
+	int cid_after_first = 0, cid_before_ring = 0, pcm = -1;
+	static int16_t cid_buf[8000 * 3];
 	char line[128];
 	size_t used = 0;
 
@@ -255,6 +300,8 @@ static int cmd_daemon(void)
 		perror(CTL_FIFO);
 		return 1;
 	}
+	if (getenv("SLIC_CID_FMT"))
+		snprintf(cid_fmt, sizeof(cid_fmt), "%.7s", getenv("SLIC_CID_FMT"));
 	ctl = open(CTL_FIFO, O_RDONLY | O_NONBLOCK);
 	dummy = open(CTL_FIFO, O_WRONLY);	/* keeps the FIFO from hitting EOF */
 	set_state(&st, D_IDLE);
@@ -269,8 +316,11 @@ static int cmd_daemon(void)
 		/* hook transitions */
 		if (offhook != was_offhook) {
 			was_offhook = offhook;
-			if (offhook && st == D_RINGING)
+			if (offhook && st == D_RINGING) {
+				cid_at = cid_done_at = 0;
+				cid_after_first = cid_before_ring = 0;
 				set_state(&st, D_TALK);		/* answered */
+			}
 			else if (offhook && st == D_IDLE)
 				set_state(&st, D_DIALTONE);
 			else if (!offhook)
@@ -279,16 +329,46 @@ static int cmd_daemon(void)
 				set_state(&st, st);		/* refresh state file/LED */
 		}
 
-		/* ring cadence: 2 s on, 4 s off */
+		/* ring cadence: 2 s on, 4 s off, with the caller-ID burst slotted in */
 		if (st == D_RINGING) {
 			double t = now();
 
-			if (t >= ring_end) {
+			if (cid_at && t >= cid_at) {
+				/* send the burst with the line in on-hook transmission */
+				int ns = cid_samples(cid_fmt, cid_num, cid_name[0] ? cid_name : NULL,
+						     cid_buf, sizeof(cid_buf) / 2);
+
+				if (!cid_before_ring)
+					VpSetLineState(&lineCtx, VP_LINE_OHT);
+				if (pcm < 0)
+					pcm = open("/dev/slicpcm", O_WRONLY);
+				if (pcm >= 0 && ns > 0 && write(pcm, cid_buf, ns * 2) < 0)
+					perror("/dev/slicpcm");
+				/* write() returns once queued (<= 0.5 s ahead): allow for the
+				   rest of the burst plus a margin before the next ring */
+				cid_done_at = now() + ns / 8000.0 + 0.3;
+				printf("caller ID %s '%s' sent (%.2f s)\n", cid_fmt, cid_num, ns / 8000.0);
+				fflush(stdout);
+				cid_at = 0;
+			} else if (cid_done_at && t >= cid_done_at) {
+				cid_done_at = 0;
+				VpSetLineState(&lineCtx, VP_LINE_STANDBY);	/* normal polarity */
+				if (cid_before_ring) {			/* now start ringing */
+					cid_before_ring = 0;
+					ring_on = 1;
+					VpSetLineState(&lineCtx, VP_LINE_RINGING);
+					cad_next = now() + 2.0;
+				}
+			} else if (t >= ring_end) {
 				set_state(&st, offhook ? D_DIALTONE : D_IDLE);
-			} else if (t >= cad_next) {
+			} else if (!cid_at && !cid_done_at && !cid_before_ring && t >= cad_next) {
 				ring_on = !ring_on;
 				VpSetLineState(&lineCtx, ring_on ? VP_LINE_RINGING : VP_LINE_STANDBY);
 				cad_next = t + (ring_on ? 2.0 : 4.0);
+				if (!ring_on && cid_after_first) {
+					cid_after_first = 0;
+					cid_at = t + 0.6;	/* GR-30: >= 500 ms after the ring */
+				}
 			}
 		}
 
@@ -300,17 +380,53 @@ static int cmd_daemon(void)
 			used += n;
 			line[used] = 0;
 			while ((nl = strchr(line, '\n'))) {
-				char cmd[16] = "";
+				char cmd[16] = "", num[24] = "", name[16] = "", word[16] = "";
 				double arg = 0;
 
 				*nl = 0;
-				sscanf(line, "%15s %lf", cmd, &arg);
+				sscanf(line, "%15s %lf %23s %15s", cmd, &arg, num, name);
+				sscanf(line, "%*s %15s", word);
 				printf("command: %s\n", line);
 				if (!strcmp(cmd, "ring") && !offhook) {
+					/* ring SECS [NUMBER [NAME]] */
+					snprintf(cid_num, sizeof(cid_num), "%s", num);
+					snprintf(cid_name, sizeof(cid_name), "%s", name);
+					cid_at = cid_done_at = 0;
+					cid_after_first = cid_before_ring = 0;
 					ring_end = now() + (arg > 0 ? arg : 30);
 					ring_on = 1;
 					cad_next = now() + 2.0;
 					set_state(&st, D_RINGING);
+					if (cid_num[0] && !strcmp(cid_fmt, "bell")) {
+						cid_after_first = 1;		/* between 1st and 2nd ring */
+					} else if (cid_num[0]) {
+						/* ETSI/DTMF: reverse polarity, send, then ring */
+						cid_before_ring = 1;
+						ring_on = 0;
+						VpSetLineState(&lineCtx, VP_LINE_OHT_POLREV);
+						cid_at = now() + 0.3;
+					}
+				} else if (!strcmp(cmd, "cidsend") && !offhook && st == D_IDLE) {
+					/* cidsend NUMBER [NAME]: burst only, no ringing (testing) */
+					int ns;
+
+					sscanf(line, "%*s %23s %15s", num, name);
+					ns = cid_samples(cid_fmt, num, name[0] ? name : NULL,
+							 cid_buf, sizeof(cid_buf) / 2);
+					VpSetLineState(&lineCtx, strcmp(cid_fmt, "bell") ?
+						       VP_LINE_OHT_POLREV : VP_LINE_OHT);
+					usleep(300000);
+					if (pcm < 0)
+						pcm = open("/dev/slicpcm", O_WRONLY);
+					if (pcm >= 0 && ns > 0 && write(pcm, cid_buf, ns * 2) < 0)
+						perror("/dev/slicpcm");
+					usleep((useconds_t)(ns / 8000.0 * 1e6) + 300000);
+					VpSetLineState(&lineCtx, VP_LINE_STANDBY);
+					printf("caller ID %s '%s' sent without ringing\n", cid_fmt, num);
+				} else if (!strcmp(cmd, "cidfmt")) {
+					if (!strcmp(word, "bell") || !strcmp(word, "v23") || !strcmp(word, "dtmf"))
+						snprintf(cid_fmt, sizeof(cid_fmt), "%.7s", word);
+					printf("caller ID format: %s\n", cid_fmt);
 				} else if (!strcmp(cmd, "talk")) {
 					set_state(&st, D_TALK);
 				} else if (!strcmp(cmd, "release") || !strcmp(cmd, "stop")) {
@@ -325,6 +441,8 @@ static int cmd_daemon(void)
 	}
 	set_state(&st, D_IDLE);
 	put_file(PHONE_LED, "0");
+	if (pcm >= 0)
+		close(pcm);
 	close(ctl);
 	close(dummy);
 	unlink(CTL_FIFO);
@@ -338,6 +456,9 @@ int main(int argc, char **argv)
 	const char *dev = getenv("SLIC_DEV") ? getenv("SLIC_DEV") : "/dev/spidev0.1";
 	const char *cmd = argc > 1 ? argv[1] : "id";
 	double secs = argc > 2 ? atof(argv[2]) : 5;
+
+	if (!strcmp(cmd, "cidgen"))
+		return cmd_cidgen(argc, argv);	/* no hardware needed */
 
 	if (SlicHalOpen(dev))
 		return 1;
