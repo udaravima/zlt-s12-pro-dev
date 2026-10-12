@@ -1,3 +1,8 @@
+/*
+ * Device tree decompiled from the ZLT S12 Pro's stock (Tozed) firmware, kept
+ * as a hardware reference. NOT covered by this repository's licences: it is
+ * Tozed's data, not our work, and no licence to it is granted here.
+ */
 /dts-v1/;
 
 / {

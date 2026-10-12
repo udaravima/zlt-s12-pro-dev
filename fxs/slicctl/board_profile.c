@@ -1,5 +1,10 @@
 /* Device profile of the ZLT S12 Pro's Le9641 SLIC board.
  *
+ * NOT covered by this repository's licence (GPL-2.0): these bytes are data
+ * from the router's stock firmware (Tozed), not our work, and no licence to
+ * them is granted here. They are included only so the phone port can work
+ * (interoperability) on routers whose stock firmware is gone.
+ *
  * VP-API-II Profile Wizard format: 0x0D (VP886/887 family), 0xFF (device
  * profile), index 0, 0x33 bytes follow, format version 8. It configures the
  * PCM clock and the SLIC's own switching supply (a buck-boost tracker that

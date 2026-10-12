@@ -53,4 +53,6 @@ to the SDK's `feeds.conf`, then `./scripts/feeds update zltphone && ./scripts/fe
 install -p zltphone slic-fxs`. Full steps in doc 09 §12.
 
 Not committed on purpose: the Microsemi API (© Microsemi, no redistribution
-licence) and the Tozed profile bytes (stock firmware data).
+licence) and Tozed's optional DC-feed/ring set. Committed but **not under this
+repo's licence** (Tozed's data, included for interoperability):
+`slicctl/board_profile.c` and `reference/stock_tozed_s12-unisoc-plus.dts`.

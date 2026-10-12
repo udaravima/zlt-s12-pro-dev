@@ -78,12 +78,18 @@ The modem's boot chain is signed; these docs never reflash it.
 - Documentation and `scripts/`: **MIT** (see `LICENSE`).
 - Code in `fxs/` (kernel modules, `slicctl`, tools): **GPL-2.0** (see
   `fxs/LICENSE`). The kernel modules must be GPL.
+- **Excluded from both licences:** `fxs/slicctl/board_profile.c` (the
+  board's 55-byte SLIC device profile) and
+  `fxs/reference/stock_tozed_s12-unisoc-plus.dts` (the decompiled stock device
+  tree). Both are Tozed's data from the stock firmware, not our work; they're
+  included only so the phone port works on routers whose stock firmware is
+  gone (interoperability), and no licence to them is granted.
 - **Not included, on purpose:** Microchip/Microsemi VP-API-II (no
   redistribution licence; `fxs/slicctl/fetch-vpapi.sh` pulls it from the public
-  GPL project that bundles it), Tozed line-setting bytes (regenerated from your
-  own stock dump), and firmware dumps (device-unique data). So **don't
-  redistribute built `slicctl` binaries or `slic-fxs` packages**; build them
-  yourself.
+  GPL project that bundles it), Tozed's optional DC-feed/ring set (extracted
+  from your own stock dump if you want it), and firmware dumps (device-unique
+  data). So **don't redistribute built `slicctl` binaries or `slic-fxs`
+  packages**; build them yourself.
 
 ## Credits
 
