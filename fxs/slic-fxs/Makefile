@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=slic-fxs
 PKG_VERSION:=2026.10.11
-PKG_RELEASE:=4
+PKG_RELEASE:=5
 PKG_LICENSE:=GPL-2.0-only
 
 # fxs/ checkout this package lives in (the SDK sees it through a symlink)
@@ -18,7 +18,7 @@ define Package/slic-fxs
 endef
 
 define Package/slic-fxs/description
-  slicctl (Microsemi VP-API-II with the board's stock profiles), an init
+  slicctl (Microsemi VP-API-II with the board's device profile), an init
   script that loads the SLIC modules late in boot with a boot-loop failsafe,
   slic-play for playing raw 8 kHz clips to the handset, and the Asterisk
   link: the daemon's AudioSocket bridge and keypad dialling, the slic-dial
@@ -32,7 +32,6 @@ endef
 define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)
 	[ -d $(FXS_DIR)/slicctl/vpapi ] || { echo "run fxs/slicctl/fetch-vpapi.sh first"; exit 1; }
-	[ -f $(FXS_DIR)/slicctl/stock_profiles.c ] || { echo "generate fxs/slicctl/stock_profiles.c"; exit 1; }
 	$(CP) $(FXS_DIR)/slicctl/. $(PKG_BUILD_DIR)/
 	rm -rf $(PKG_BUILD_DIR)/vendor $(PKG_BUILD_DIR)/slicctl
 endef

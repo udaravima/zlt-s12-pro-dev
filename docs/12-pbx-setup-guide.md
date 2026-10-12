@@ -260,7 +260,9 @@ TONES=uk slic-asterisk-setup --no-apk    # any [xx] section in indications.conf
 
 Default `lk`: Sri Lanka's values from ITU's E.180 tone list (doc 11 §2).
 They're what SIP callers and the handset hear as ringback and busy.
-The handset's *dial tone* is fixed by the phone chip's profile (450 Hz).
+The handset's dial and busy tones come from the phone daemon, which uses
+Sri Lanka's values whatever `TONES` says (425 Hz; `tone_frame()` in
+`slicctl.c`).
 
 ---
 

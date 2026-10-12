@@ -3,6 +3,11 @@
 
     extract_profiles.py <mislic-binary | stock mtd4 firmware dump> [out.c]
 
+Optional since slic-fxs r5: the build needs only slicctl/board_profile.c
+(the device profile, committed). Use this to check that file against your
+own stock dump, or to build in Tozed's DC-feed/ring set ("B", SLIC_DC=B /
+SLIC_RING=B).
+
 The stock `mislic` daemon embeds Profile Wizard byte arrays. Each starts with
 a 4-byte header: 0x0D (VP886/887 family), profile type, index, length-4,
 followed by a format-version byte. Types: 0xFF device, 0x01 DC feed,

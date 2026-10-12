@@ -74,7 +74,7 @@ driver must be up before the control side can do anything (doc 09 §5.2–5.4).
 | 4 | **`mt7621_pcm_raw.ko`** | same | claims GPIO 32 (=0); programs the audio PLL, pin mux and PCM controller as bus master; moves samples between `/dev/slicpcm` and the hardware FIFO every 250 µs | PCM hardware, userspace |
 | 5 | **VP-API-II (Microsemi)** | fetched into `fxs/slicctl/vpapi/` (not in git) | the chip's "driver": init, calibration, line states, tones, events | component 6 via `VpMpiCmd()` |
 | 6 | **HAL: `vp_hal.c`, `sys_service.c`** | `fxs/slicctl/arch/` | the only hardware access VP-API needs: turns its byte commands into spidev transfers; trivial locking and delays | `/dev/spidev0.1` |
-| 7 | **Line profiles** | generated `fxs/slicctl/stock_profiles.c` (not in git) | Tozed's settings for this board (clock, buck-boost supply, DC feed, ringing, dial tone) | loaded by VP-API at init |
+| 7 | **Line profiles** | device profile: `fxs/slicctl/board_profile.c` (from the stock firmware, committed); DC feed and ringing: VP-API's built-in defaults (identical to Tozed's copies); optional Tozed set: generated `stock_profiles.c` (not in git) | the board's clock and buck-boost supply settings; line current; ringing | loaded by VP-API at init |
 | 8 | **`slicctl`** | `fxs/slicctl/slicctl.c` | CLI test tool **and** the long-running `daemon`: owns the SLIC, runs the phone state machine, ring cadence, caller-ID timing | 5, `/dev/slicpcm`, control FIFO |
 | 9 | **Caller-ID generator** | `fxs/slicctl/cid.c` | builds MDMF messages; renders Bell 202 / V.23 FSK or DTMF as audio samples | used by 8 |
 | 10 | **`slic-fxs` package** | `fxs/slic-fxs/` | installs 8, the init script, uci config, `slic-play`, test clips | procd |
@@ -201,7 +201,7 @@ procd ─► /etc/init.d/slic start (START=99, after network)
 ```
 phone off-hook → loop current → SLIC hook bit
 daemon (10 ms poll loop) → VpGetEvent: HOOK_OFF
-  → state idle→dialtone: line TALK + tone generator (450 Hz stock profile), LED on
+  → state idle→dialtone: line TALK + 425 Hz dial tone fed through PCM, LED on
     (TALK, not ACTIVE: the codec must run so the DTMF detector hears the keys)
 first key → state dialing, tone off; '#' or 3 s quiet → dial (doc 11 §5.3)
 phone on-hook → HOOK_ON → state idle: tone off, line STANDBY, LED off

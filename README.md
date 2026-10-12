@@ -42,15 +42,14 @@ reproduce it. Each document has a "How obtained" section with the commands.
 
 ## Phone port quick start
 
-Needs the OpenWrt **SDK for 25.12.5 ramips/mt7621** and a dump of your
-router's **stock** firmware (`mtd4`), made before flashing OpenWrt. The
-board's line settings are extracted from it.
+Needs the OpenWrt **SDK for 25.12.5 ramips/mt7621**. No stock firmware
+dump is needed: the board's device profile is in `fxs/slicctl/board_profile.c`
+and the rest comes from VP-API's defaults (doc 09 §7.1).
 
 ```sh
 export SDK=/path/to/openwrt-sdk-25.12.5-ramips-mt7621_gcc-14.3.0_musl.Linux-x86_64
 cd fxs
 ./slicctl/fetch-vpapi.sh
-python3 tools/extract_profiles.py /path/to/stock-mtd4.bin slicctl/stock_profiles.c
 ./build.sh                                     # -> fxs/build/*.apk (~10 min)
 scp -O build/*.apk root@ROUTER:/tmp/
 ssh root@ROUTER 'apk add --allow-untrusted /tmp/kmod-slic-spi-cs1-*.apk \

@@ -24,7 +24,7 @@ the PBX is [11-pbx-asterisk.md](../docs/11-pbx-asterisk.md)
 | `tools/audiosocket_demo.py` | Template AudioSocket app for extension 800 (beep + parrot, saves a .wav) |
 | `tools/sip_bot.py` | Template SIP application, stdlib only: logs in as an account, answers (beep + parrot, records, prints keys) or calls a number and plays a WAV |
 | `tools/echo_measure.py` | Measures the line echo through ext 800 (AudioSocket): plays noise, fits the echo path, prints echo level, delay and the best a linear canceller could do (doc 11 §7.1) |
-| `tools/extract_profiles.py` | Rebuilds `slicctl/stock_profiles.c` from a stock-firmware dump |
+| `tools/extract_profiles.py` | Optional: extracts Tozed's profile tables from a stock-firmware dump (`slicctl/stock_profiles.c`), to check `board_profile.c` or build in Tozed's DC/ring set |
 | `tools/cid_decode.py` | Independent caller-ID decoder for generated files and line captures |
 | `tools/slic-play.sh` | Installed as `slic-play`: play `.s16` clips through the daemon |
 | `tools/gen_test_audio.py`, `tools/pcm_analyze.py` | Test audio; capture analysis (frequency, purity) |
@@ -36,7 +36,6 @@ Quick start:
 ```sh
 export SDK=/path/to/openwrt-sdk-25.12.5-ramips-mt7621_gcc-14.3.0_musl.Linux-x86_64
 ./slicctl/fetch-vpapi.sh
-python3 tools/extract_profiles.py /path/to/stock-mtd4.bin slicctl/stock_profiles.c
 ./build.sh                     # ~10 min: also repackages all SDK kmods
 scp -O build/*.apk root@ROUTER:/tmp/
 ssh root@ROUTER 'apk add --allow-untrusted /tmp/kmod-slic-spi-cs1-*.apk /tmp/kmod-mt7621-pcm-raw-*.apk /tmp/slic-fxs-*.apk'
