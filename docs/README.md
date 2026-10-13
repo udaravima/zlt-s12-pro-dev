@@ -20,6 +20,21 @@ The project outgrew its original goal. Timeline of scope:
    extension 100 (dial out with the keypad, rings with caller ID), LAN
    devices log in over SIP (201–203), and apps / AI agents take calls over
    AudioSocket (ext 800) (doc 11; hands-on guide doc 12).
+8. **SMS gateway + logs that survive a reboot** — smstools3 receives and
+   sends SMS through the modem; received SMS, the system log, Asterisk's log
+   and call history moved from RAM to the USB root filesystem (doc 13).
+
+## Current state: SMS + persistent logs (2026-10-13, verified live)
+
+- **SMS:** smstools3, `/etc/smsd.conf`; received SMS in
+  `/root/spool/sms/incoming/`, send by dropping a file in `outgoing/`. Receive
+  and send both verified. The modem's own SMS memory has zero slots; messages
+  live on the SIM (`"SM"`), which smsd empties.
+- **Logs on disk:** system log `/srv/log/messages` (1 MiB + one `.old`),
+  Asterisk log and call history (CDR, local time) in `/srv/log/asterisk/`.
+  New packages: `asterisk-cdr-csv`, `zoneinfo-asia`.
+- **Not done:** a reboot test of the above; Asterisk's own log doesn't
+  rotate. Rebuild steps and traps: doc 13.
 
 ## Current state: home PBX (2026-10-11, verified live)
 
@@ -163,6 +178,7 @@ repositioning toward Mobitel LTE coverage.
 | `10-phone-port-architecture.md` | Phone port architecture + onboarding: components, interfaces, runtime flows, state machine, timing, design decisions, failure modes, labs, extension points |
 | `11-pbx-asterisk.md` | Home PBX: Asterisk on the router (apk), LAN-only SIP, the phone as extension 100 over AudioSocket, keypad DTMF detection, app/AI-agent hook (ext 800), pitfalls, SLT trunk plan |
 | `12-pbx-setup-guide.md` | PBX hands-on guide: install, everyday commands, every setting and where it lives, adding accounts and your own numbers, connecting softphones / desk phones / apps, test checklist, troubleshooting, backup, how it was set up here |
+| `13-sms-and-persistent-logs.md` | SMS gateway (smstools3: SIM storage, init strings, send/receive) and moving logs, call history and SMS off RAM: what must stay in `/var`, system log to disk, Asterisk log dir + CDR + time zone; rebuild guide |
 | `debrief.md` | From-the-beginning briefing: status, stories, decisions, open items |
 
 ## Artifacts

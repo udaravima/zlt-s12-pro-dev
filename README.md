@@ -20,6 +20,7 @@ reproduce it. Each document has a "How obtained" section with the commands.
 | Full modem firmware dump | 128 MB NAND dumped over USB, md5-verified; method and pitfalls | [06](docs/06-fw-dump.md) |
 | WWAN data link | NCM dial path fixed; metric-based failover between PPPoE and LTE | [08](docs/08-wwan-ncm-data.md) |
 | Voice / SMS | AT channel, oFono on the modem, SIM and network behaviour | [07](docs/07-voice-sms.md) |
+| SMS gateway + persistent logs | smstools3 sends and receives SMS; SMS, system log and Asterisk call history kept across reboots | [13](docs/13-sms-and-persistent-logs.md) |
 
 ## Documents
 
@@ -38,6 +39,7 @@ reproduce it. Each document has a "How obtained" section with the commands.
 | [10-phone-port-architecture](docs/10-phone-port-architecture.md) | Phone port architecture + onboarding: interfaces, flows, state machine, timing, design decisions, labs |
 | [11-pbx-asterisk](docs/11-pbx-asterisk.md) | Home PBX: Asterisk via apk, LAN-only SIP, the phone over AudioSocket, DTMF detection, app/AI-agent hook, pitfalls |
 | [12-pbx-setup-guide](docs/12-pbx-setup-guide.md) | PBX hands-on: install, configuration, adding accounts, connecting softphones and apps, troubleshooting |
+| [13-sms-and-persistent-logs](docs/13-sms-and-persistent-logs.md) | SMS gateway with smstools3 (SIM storage, init strings, send/receive) and keeping SMS, logs and call history off RAM; rebuild guide |
 | [debrief](docs/debrief.md) | From-the-beginning briefing |
 
 ## Phone port quick start

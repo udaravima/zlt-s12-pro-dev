@@ -4,6 +4,16 @@
 routing incident described in §4. Everything below was observed live on the
 devices unless marked "theory".*
 
+> **Update 2026-10-13 (who holds which modem port):** **smstools3 (`smsd`)
+> now holds `/dev/ttyUSB0` permanently** (`keep_open = yes`) to receive and
+> send SMS (doc 13). On this date ModemManager showed the modem as
+> `disabled` and held **no** ttyUSB port, though it still lists ttyUSB0 as
+> its primary. Why it no longer holds ttyUSB0+4, as below, is unknown. If
+> ModemManager enables the modem again, it and smsd would share ttyUSB0. wwan
+> still dials on ttyUSB3, which also answers AT queries while smsd runs.
+> Trap: the SMS storage selection (`AT+CPMS`) is **shared by all ports**, so
+> a `CPMS` sent on ttyUSB3 changes what smsd sees on ttyUSB0.
+
 > **Update 2026-10-02 (hybrid NCM + failover state):** the architecture in
 > this doc still holds, but the config and several §4/§8 facts changed:
 >

@@ -1,5 +1,21 @@
 # 01 — Host router inventory (ZLT S12 Pro)
 
+> **Update 2026-10-13 (storage today):** the overlay is no longer the internal
+> jffs2 partition. A **7 GB USB stick (`/dev/sda1`, ext4) is mounted as
+> `/overlay` (extroot)**, so `/` is writable USB storage with 6.5 GB free, and
+> the kernel now has ext4. (The table below and "No ext4" describe the
+> original state.) Consequences:
+>
+> - **`/var` is still RAM** (`/var` → `/tmp`, tmpfs 121 MB). Anything a
+>   package keeps under `/var` (spools, logs, databases) is lost on reboot.
+>   Received SMS, the system log, Asterisk's log and call history were moved
+>   to `/root/spool/sms` and `/srv/log` (doc 13 §3, which also explains what
+>   must *stay* in RAM).
+> - **The extroot fallback trap:** if the stick fails to mount, the router
+>   boots on the internal overlay (a 3.6 MiB partition), and everything written to
+>   `/root` or `/srv` lands there. Caps like the system log's 1 MiB
+>   `log_size` keep that from filling the internal flash.
+
 ## What
 
 | Property | Value |

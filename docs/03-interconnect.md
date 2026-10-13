@@ -64,6 +64,9 @@ WAN-side behavior too (NCM channels are used for data), so it was NOT touched.
 | Future package store | `/mnt/userdata/...` | modem reboot ✓ |
 | Router dropbear keypair | `/root/.ssh` in overlay | router reboot ✓ |
 | `adb forward` rules | not persistent | must be re-run at boot (script) |
+| Router `/var` (= `/tmp`, RAM) | tmpfs | router reboot ✗ (by design; doc 13 §3.1) |
+| Received SMS (router, since 2026-10-13) | `/root/spool/sms/` on the USB extroot | router reboot ✓ (expected; reboot test pending) |
+| System log, Asterisk log + call history (router) | `/srv/log/` on the USB extroot | router reboot ✓ (expected; reboot test pending) |
 
 ## How obtained
 

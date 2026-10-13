@@ -79,6 +79,11 @@ bulk into the modem — it OOM-kills sshd.
   (LAN-only); dial 601/600/800 from the handset, call 100 to ring it; apps
   on the LAN take calls over AudioSocket (ext 800). Installed as 3 packages,
   survives reboot.
+- **SMS gateway + logs on disk** (doc 13, 2026-10-13): smstools3 receives
+  SMS into `/root/spool/sms/incoming/` and sends from `outgoing/`, both
+  verified with a mobile. The modem's own SMS memory has zero slots, so
+  messages live on the SIM. The system log, Asterisk's log and call history
+  (CDR) moved from RAM to `/srv/log` on the USB extroot. Reboot test pending.
 
 ## The debugging stories worth retelling
 
@@ -168,6 +173,13 @@ Asterisk enabled; `/etc/asterisk/{pjsip,extensions,rtp}.conf` from
 `slic-asterisk-setup` (stock copies kept as `*.stock`/`*.bak-*`), generated
 `pjsip_secrets.conf`; stock `/etc/asterisk` backed up in `/root/backups/`.
 
+Router, SMS and logs (Oct 13, doc 13): packages `smstools3`, `sms-tool`,
+`asterisk-cdr-csv`, `zoneinfo-asia` (+`zoneinfo-core`); `/etc/smsd.conf`
+(spool `/root/spool/sms`, `init2` = SIM storage + store-and-notify);
+`system.@system[0].log_file=/srv/log/messages`, `log_size=1024`;
+`asterisk.conf` `[directories]` made live with `astlogdir => /srv/log/asterisk`;
+`cdr.conf` `usegmtime=no`. Originals in `/root/backups/persist-20261013/`.
+
 ## Open items, in priority order
 
 1. **usb0 route-vanish** (Oct 2 regression): after a pppoe restart, wwan_4's
@@ -178,7 +190,8 @@ Asterisk enabled; `/etc/asterisk/{pjsip,extensions,rtp}.conf` from
    restart.
 2. **4G direction**: Dialog SIM test or antenna repositioning — the Oct 2
    test proved config can't fix it (coverage + SIM).
-3. **Voice/SMS exercise**: SMS round-trip via `sms_tool`. (The RJ11 handset
+3. **Voice/SMS exercise**: SMS round trip done 2026-10-13 with smstools3
+   (doc 13); still to do: a reboot test of the SMS/log paths. (The RJ11 handset
    now works through the router's own SLIC and Asterisk, docs 09–11; GSM
    voice through the modem is still untried.)
 3a. **PBX follow-ups** (doc 11 §11): echo cancellation for apps, the

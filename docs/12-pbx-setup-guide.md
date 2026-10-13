@@ -132,6 +132,8 @@ the next `slic-asterisk-setup` run (the old file is kept as `*.bak-DATE`).
 | **`/etc/asterisk/extensions_local.conf`** | **you** | your own numbers (§4.5) |
 | **`/etc/asterisk/pjsip_local.conf`** | **you** | your own SIP settings (§4.6) |
 | `/usr/share/slic/asterisk/` | the `slic-fxs` package | the templates the setup copies from |
+| `/etc/asterisk/asterisk.conf` | you (once) | on this router: `astlogdir => /srv/log/asterisk`, with `(!)` removed from `[directories]` so it takes effect (doc 13 §3.3) |
+| `/etc/asterisk/cdr.conf` | package, `usegmtime=no` set by you | call history (CDR) format; needs `asterisk-cdr-csv` installed (doc 13 §3.3) |
 
 ### 4.2 SIP logins (accounts)
 
@@ -400,12 +402,13 @@ After each, `logread -e slicctl | tail` should end with `0 frames dropped`.
 | "That is not a valid extension" | number not in the plan | §1, §4.5 |
 | You hear your own voice faintly on a softphone | line echo from the analog phone side; the driver cancels it since kmod r3. Check `ec=Y` in `/sys/module/mt7621_pcm_raw/parameters/` | doc 11 §7.1 |
 | Calls to 100 get busy at once | handset off-hook or line not idle; FIFO permissions | `cat /var/run/slic.state`; `ls -l /var/run/slic.ctl` |
-| Softphone: "registration failed", 401/403 | wrong password or username; device not on the LAN subnet | `tail /var/log/asterisk/messages.log` (`Failed to authenticate` = password; `Not match Endpoint ACL` = wrong network) |
+| Softphone: "registration failed", 401/403 | wrong password or username; device not on the LAN subnet | `tail /srv/log/asterisk/messages.log` (doc 13; `/var/log/asterisk/` on a stock setup) (`Failed to authenticate` = password; `Not match Endpoint ACL` = wrong network) |
 | Softphone registered, but no audio | codec mismatch, or a firewall on the device | enable PCMU/PCMA; `asterisk -rvvv` during the call |
 | Softphone doesn't ring on incoming calls | app asleep (mobile), PC firewall | keep the app open; §5.2 |
 | One-way audio between softphone and handset | the device sends to a wrong address (STUN on) | turn STUN/ICE off |
 | Extension 800: call drops after ~2 s | your app isn't sending audio continuously | send silence frames every 20 ms (doc 11 §8.1) |
 | Softphone: number ending in `#` rejected | (fixed 2026-10-11) softphones send `#` as part of the number | `[from-lan]` now drops a trailing `#` |
+| Call history (`Master.csv`) empty, or times 5:30 h off | no CDR backend installed; no zone file | doc 13 §3.3: `apk add asterisk-cdr-csv zoneinfo-asia` |
 | Log: "no local system nameservers" | harmless | — |
 | Log: "The canary is no more" | harmless: Asterisk lowered its priority | — |
 
@@ -416,7 +419,8 @@ After each, `logread -e slicctl | tail` should end with `0 frames dropped`.
 **Back up** (contains passwords, keep it private):
 
 ```sh
-tar czf /root/backups/asterisk-$(date +%Y%m%d).tgz /etc/asterisk /etc/config/slic
+tar czf /root/backups/asterisk-$(date +%Y%m%d).tgz /etc/asterisk /etc/config/slic \
+    /etc/smsd.conf /etc/config/system      # SMS + log settings (doc 13)
 ```
 
 **Upgrade the phone package** (new `slic-fxs` build): `apk add

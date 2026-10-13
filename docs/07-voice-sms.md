@@ -29,6 +29,13 @@ Investigated live on 2026-09-26. Everything below was verified on the boxes.
 > it's registration that's denied). Runtime state left: TechnologyPreference
 > "GSM only" (dbus, reverts on modem reboot).
 
+> **Update 2026-10-13 (SMS gateway):** SMS now works end to end with
+> **smstools3** on the router (receive into `/root/spool/sms/incoming/`, send
+> by dropping a file in `outgoing/`). Two facts that contradict a natural
+> assumption: the modem's own SMS memory (`"ME"`) has **zero capacity**, so
+> messages live on the SIM (`"SM"`, 30 slots); and the `AT+CPMS` selection is
+> **shared across all ttyUSB ports**. Setup, traps and rebuild steps: doc 13.
+
 ## TL;DR
 
 | Capability | Status | Why |

@@ -588,6 +588,10 @@ Verified 2026-10-11: dialled from the handset, the PC heard and recorded
 | BusyBox has no `base64`, `od`, `install`, `timeout`; `sleep` takes whole seconds | the first secrets generator wrote empty passwords (caught before use) | `tr -dc 'A-Za-z0-9' < /dev/urandom \| head -c 20` plus a length check; `cp` + `chmod` |
 | "There are no local system nameservers configured" at startup | looks alarming | harmless: pjsip falls back to the system resolver |
 | "The canary is no more" in the log | looks like a crash | harmless: Asterisk lowered its own scheduling priority |
+| `[directories](!)` in the stock `asterisk.conf` | editing `astlogdir` changes nothing; `core show settings` still shows `/var/log/asterisk` | `(!)` marks a template, which is ignored: remove it (doc 13 §3.3) |
+| `cdr show status` says logging is enabled | no call history anywhere; `cdr-csv/` stays empty | no backend is installed: `apk add asterisk-cdr-csv` |
+| CDR times 5:30 h behind, even with `usegmtime=no` | timestamps in UTC | Asterisk reads `/etc/localtime`, not OpenWrt's `/etc/TZ`: `apk add zoneinfo-asia`, then `/etc/init.d/system reload` |
+| Asterisk's files under `/var` | log, call history (and any voicemail) gone after a reboot | `/var` is RAM; `astlogdir => /srv/log/asterisk` (doc 13) |
 
 ---
 
