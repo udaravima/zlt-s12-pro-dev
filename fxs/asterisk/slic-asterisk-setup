@@ -12,7 +12,8 @@
 #                                  (indications.conf; default lk, Sri Lanka)
 #
 # What it does, in order:
-#   1. apk add the Asterisk modules this setup uses (official telephony feed)
+#   1. apk add the Asterisk modules this setup uses, including the ARI
+#      WebSocket client provider (official telephony feed)
 #   2. finds the LAN address from the firewall's "lan" zone
 #   3. installs pjsip.conf, extensions.conf, rtp.conf from /usr/share/slic/asterisk
 #      into /etc/asterisk (an existing different file is kept as *.bak-DATE)
@@ -36,7 +37,7 @@ MODULES="asterisk asterisk-pjsip asterisk-res-rtp-asterisk asterisk-bridge-simpl
  asterisk-app-system asterisk-func-env asterisk-func-shell asterisk-app-waitforcond
  asterisk-app-verbose asterisk-func-cut asterisk-func-channel asterisk-sounds
  asterisk-format-gsm asterisk-format-wav asterisk-format-sln asterisk-res-musiconhold
- asterisk-app-senddtmf asterisk-app-originate"
+ asterisk-app-senddtmf asterisk-app-originate asterisk-res-websocket-client asterisk-chan-rtp"
 
 do_apk=1 newpw=0
 for a in "$@"; do

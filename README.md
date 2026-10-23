@@ -15,7 +15,7 @@ reproduce it. Each document has a "How obtained" section with the commands.
 | Topic | Result | Doc |
 |---|---|---|
 | **RJ11 phone port** | Dead on OpenWrt → **rings, caller ID, dial tone, hook detection, audio playback**, packaged and boot-safe | [09](docs/09-phone-port-fxs.md), [10](docs/10-phone-port-architecture.md), code in [`fxs/`](fxs) |
-| **Home PBX** | Asterisk on the router (LAN-only): the analog phone is **extension 100** (keypad dialling, rings with caller ID), LAN SIP devices, and an **AudioSocket hook for apps / AI agents** | [11](docs/11-pbx-asterisk.md), [12](docs/12-pbx-setup-guide.md), [`fxs/asterisk/`](fxs/asterisk) |
+| **Home PBX** | Asterisk on the router (LAN-only): the analog phone is **extension 100** (keypad dialling, rings with caller ID), LAN SIP devices, an **AudioSocket media hook**, and **ARI control for host-PC apps** | [11](docs/11-pbx-asterisk.md), [12](docs/12-pbx-setup-guide.md), [`fxs/asterisk/`](fxs/asterisk) |
 | Modem as a peer | Root shell, dedicated NCM link to the router (~6–19 MB/s), modem-side tooling | [03](docs/03-interconnect.md), [05](docs/05-expansion.md) |
 | Full modem firmware dump | 128 MB NAND dumped over USB, md5-verified; method and pitfalls | [06](docs/06-fw-dump.md) |
 | WWAN data link | NCM dial path fixed; metric-based failover between PPPoE and LTE | [08](docs/08-wwan-ncm-data.md) |

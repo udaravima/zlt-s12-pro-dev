@@ -98,11 +98,12 @@ APP=192.168.1.20:9092 slic-asterisk-setup     # APP = where ext 800 sends calls
 
 It does five things, in order, and is safe to re-run:
 
-1. `apk add` the 32 Asterisk packages the dialplan needs. Each one is in the
+1. `apk add` the Asterisk packages the dialplan needs. Each one is in the
    list because something uses it: `pjsip` for SIP, the three `audiosocket`
    modules, `pbx-spool` (call files), `app-system` (talking to the FIFO),
    `app-waitforcond`, `func-shell`, `codec-gsm` (the bundled sounds are GSM
-   files: without it `Playback()` fails with "no translation path gsm → ulaw").
+   files: without it `Playback()` fails with "no translation path gsm → ulaw"),
+   and `asterisk-res-websocket-client` for ARI.
 2. Find the LAN address from the firewall zone named `lan`, so nothing is
    hard-coded.
 3. Fill the templates in `/usr/share/slic/asterisk/` into `/etc/asterisk/`
@@ -570,6 +571,22 @@ python3 fxs/tools/audiosocket_demo.py --listen 0.0.0.0:9092
 Verified 2026-10-11: dialled from the handset, the PC heard and recorded
 6.2 s of speech, and the caller heard the beep and their own voice.
 
+### 8.3 ARI: remote PBX control from a host PC
+
+ARI is a separate **control plane** from the AudioSocket media path above.
+A host-PC service can use authenticated REST requests at
+`https://polarsip.oraian.net/ari` and receive events over
+`wss://polarsip.oraian.net/ari/events?app=<app-name>`. The ARI setup and
+checks are in [doc 12 §5.6](12-pbx-setup-guide.md#56-ari-control-from-a-host-pc).
+
+Keep Asterisk's HTTP listener bound to `127.0.0.1:8088`; Nginx terminates TLS
+and proxies the REST and WebSocket traffic. Allow HTTPS only from trusted LAN
+or VPN clients. Do not put ARI credentials in browser JavaScript or expose
+port 8088 to the internet. A successful unauthenticated probe returns `401`
+with an Asterisk authentication challenge; `404` means the ARI resource route
+is not available. ARI control alone does not create a SIP/audio path to the
+RJ11 phone.
+
 ---
 
 ## 9. Pitfalls found on the way
@@ -638,4 +655,6 @@ Asterisk 23.1.0 source (`res/res_audiosocket.c`,
 outcomes come from `logread -e slicctl` and
 `/var/log/asterisk/messages.log` during live tests with a Uniden AS7412 on
 the RJ11 jack; resource figures from `/proc/PID/status`, `free`, `netstat`;
-audio levels from the 800 test's recording.
+audio levels from the 800 test's recording. ARI setup and the missing
+WebSocket-client package diagnosis were verified on-router on 2026-10-23;
+see doc 12 §5.6 and §9.

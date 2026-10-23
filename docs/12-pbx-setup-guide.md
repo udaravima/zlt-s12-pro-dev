@@ -39,8 +39,10 @@ APP=192.168.1.20:9092 slic-asterisk-setup   # APP = the PC that will run your ap
 
 What happens and how long it takes:
 
-1. `apk add` installs 32 Asterisk packages (about 5.5 MB on disk) from the
-   official OpenWrt telephony feed; it depends on your connection (not timed).
+1. `apk add` installs the Asterisk package set from the official OpenWrt
+   telephony feed; it depends on your connection (not timed). The setup script
+   includes `asterisk-res-websocket-client`, which ARI needs even though the
+   `asterisk-res-ari` package does not pull it in on this release.
 2. It finds the router's LAN address from the firewall zone named `lan`.
 3. It writes `/etc/asterisk/pjsip.conf`, `extensions.conf`, `rtp.conf`,
    selects Sri Lanka's call-progress tones, and creates the three SIP
@@ -373,6 +375,127 @@ is rejected before it can log in. Widening that means adding a `permit=`
 line to `[lan-only]` in `pjsip.conf` (and re-applying it after each setup
 run) plus a firewall rule; think about who else is on that network first.
 
+### 5.6 ARI control from a host PC
+
+A host-PC application can control Asterisk on the router through ARI; the
+application does not need to run on OpenWrt. ARI is a control API, separate
+from the AudioSocket media path used by the RJ11 handset (§5.4 / doc 11 §8).
+Use REST at `https://polarsip.oraian.net/ari` and the event WebSocket at
+`wss://polarsip.oraian.net/ari/events?app=<app-name>`.
+
+#### Install the required module package
+
+The setup script installs `asterisk-res-websocket-client`, which this
+OpenWrt feed does not pull in as a dependency of `asterisk-res-ari`. Without
+it, ARI modules may fail to load with an undefined WebSocket-client symbol.
+It also installs `asterisk-chan-rtp`, which provides the `UnicastRTP` channel
+type required when a host app requests ARI `externalMedia`. ARI can respond
+normally while external-media channel creation still fails if this package
+is missing. If using an older copy of the setup script, install both:
+
+```sh
+apk update
+apk add asterisk-res-websocket-client asterisk-chan-rtp
+```
+
+After installing the package and editing the configs below, restart Asterisk
+so `autoload=yes` can load the WebSocket client and ARI modules. Schedule the
+restart when no call is active.
+
+#### Enable ARI with a private credential
+
+In `/etc/asterisk/http.conf`, keep the built-in HTTP service on loopback
+because Nginx is on the same router:
+
+```ini
+[general]
+enabled = yes
+bindaddr = 127.0.0.1
+bindport = 8088
+```
+
+In `/etc/asterisk/ari.conf`, enable ARI and create a dedicated non-read-only
+user only if the app needs to control calls. Generate a SHA-512 crypt hash
+interactively on a trusted workstation (for example, `mkpasswd -m sha-512`;
+install the `whois` package on Debian if needed), then put the hash—not the
+plaintext—in the `password` field:
+
+```ini
+[general]
+enabled = yes
+; For browser clients, allow only the exact origin that serves the UI.
+allowed_origins = https://app.example.test
+
+[ari-client]
+type = user
+read_only = no
+password = <interactive SHA-512-crypt hash>
+password_format = crypt
+```
+
+Use a unique password, keep `/etc/asterisk/ari.conf` private, and never commit
+this file, its hash, or a client secret. CORS `allowed_origins` applies to
+browser origins; it is not authentication. Do not embed ARI credentials in
+browser JavaScript.
+
+#### Proxy HTTPS and WebSockets through Nginx
+
+In the TLS server block for `polarsip.oraian.net`, proxy to Asterisk's local
+HTTP listener. The key WebSocket requirement is `proxy_http_version 1.1`:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:8088;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
+```
+
+Keep the certificate/key directives in the existing TLS server block. On
+OpenWrt, validate the active UCI-generated config with
+`nginx -t -c /etc/nginx/uci.conf`, then run `/etc/init.d/nginx reload`.
+The generic `nginx -t` may look for a nonexistent `/etc/nginx/nginx.conf`.
+Keep port 8088 bound to loopback and restrict HTTPS access to the trusted LAN
+or VPN; do not expose the ARI API directly to the internet.
+
+#### Verify before connecting the app
+
+After the Asterisk restart, check that `res_websocket_client.so`, `res_ari.so`,
+`res_ari_events.so`, and the other `res_ari_*.so` modules report `Running`:
+
+```sh
+asterisk -rx "http show status"
+asterisk -rx "module show like websocket_client"
+asterisk -rx "module show like ari"
+asterisk -rx "module show like chan_rtp"
+asterisk -rx "core show channeltypes" | grep UnicastRTP
+curl -i http://127.0.0.1:8088/ari/asterisk/info
+curl -i https://polarsip.oraian.net/ari/asterisk/info
+```
+
+Without credentials, both API requests should return **401 Unauthorized**
+with `WWW-Authenticate: Basic realm="Asterisk REST Interface"`. That proves
+the route is active and protected; 404 indicates ARI did not load or the URL
+is wrong. An unauthenticated WebSocket-upgrade attempt should also reach Asterisk and
+receive an auth challenge:
+
+```sh
+curl -i --http1.1 \
+  -H 'Connection: Upgrade' \
+  -H 'Upgrade: websocket' \
+  -H 'Sec-WebSocket-Version: 13' \
+  -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+  'https://polarsip.oraian.net/ari/events?app=probe'
+```
+
+A successful authenticated WebSocket client must complete the upgrade (HTTP
+101). Use the app's secret store or a server-side environment variable for
+credentials; never put the password in a URL, shell history, or browser bundle.
+
 ---
 
 ## 6. Test checklist (after installing or changing things)
@@ -387,6 +510,7 @@ run) plus a firewall rule; think about who else is on that network first.
 | 6 | softphone dials `100` | handset rings with "201" |
 | 7 | handset dials `201#` | softphone rings; handset hears the double "brr-brr" ringback |
 | 8 | handset dials `800#` with your app running | your app answers |
+| 9 | ARI checks in §5.6, including the HTTPS REST route | modules are `Running`; unauthenticated REST probe returns 401, not 404 |
 
 After each, `logread -e slicctl | tail` should end with `0 frames dropped`.
 
@@ -403,6 +527,8 @@ After each, `logread -e slicctl | tail` should end with `0 frames dropped`.
 | You hear your own voice faintly on a softphone | line echo from the analog phone side; the driver cancels it since kmod r3. Check `ec=Y` in `/sys/module/mt7621_pcm_raw/parameters/` | doc 11 §7.1 |
 | Calls to 100 get busy at once | handset off-hook or line not idle; FIFO permissions | `cat /var/run/slic.state`; `ls -l /var/run/slic.ctl` |
 | Softphone: "registration failed", 401/403 | wrong password or username; device not on the LAN subnet | `tail /srv/log/asterisk/messages.log` (doc 13; `/var/log/asterisk/` on a stock setup) (`Failed to authenticate` = password; `Not match Endpoint ACL` = wrong network) |
+| ARI `/ari/asterisk/info` returns 404 | ARI module failed to load; the WebSocket client package may be missing | `apk add asterisk-res-websocket-client`, restart Asterisk, then check `module show like ari` and the loader log for missing symbols |
+| ARI REST works but WSS events do not connect | Nginx is proxying upstream as HTTP/1.0 | add `proxy_http_version 1.1` plus the Upgrade/Connection headers in the TLS server's proxy location; test and reload Nginx (§5.6) |
 | Softphone registered, but no audio | codec mismatch, or a firewall on the device | enable PCMU/PCMA; `asterisk -rvvv` during the call |
 | Softphone doesn't ring on incoming calls | app asleep (mobile), PC firewall | keep the app open; §5.2 |
 | One-way audio between softphone and handset | the device sends to a wrong address (STUN on) | turn STUN/ICE off |
@@ -474,6 +600,18 @@ For the record, in order:
 9. **Tones:** the ringback was the US one; switched to Sri Lanka's from
    ITU's E.180 table (`slic-fxs` r3, which also made accounts a list you can
    extend and remembers the app address).
+10. **ARI (2026-10-23):** `/` through HTTPS redirected to Asterisk's
+    `/httpstatus`, but `/ari/asterisk/info` returned 404. Asterisk's log
+    showed `res_ari.so` could not resolve
+    `ast_websocket_client_observer_remove`; the separate
+    `asterisk-res-websocket-client` package was missing, though all installed
+    Asterisk packages matched the feed version. Installed that package,
+    loaded the ARI modules, and restarted with zero active calls. After
+    restart, `res_websocket_client.so` and all ARI modules loaded automatically.
+    Added `proxy_http_version 1.1` to the Nginx proxy for WebSocket upgrades;
+    local and HTTPS ARI probes then returned the expected 401 challenge
+    instead of 404. No credential is recorded here; rotate any secret exposed
+    during setup.
 
 ## How obtained
 
