@@ -42,7 +42,12 @@ What happens and how long it takes:
 1. `apk add` installs the Asterisk package set from the official OpenWrt
    telephony feed; it depends on your connection (not timed). The setup script
    includes `asterisk-res-websocket-client`, which ARI needs even though the
-   `asterisk-res-ari` package does not pull it in on this release.
+   `asterisk-res-ari` package does not pull it in on this release. Since
+   `slic-fxs` r6 the list also has `asterisk-app-stasis` (the `Stasis()`
+   dialplan application an ARI route calls) and `asterisk-cdr-csv` (call
+   history). r6 then makes `/etc/asterisk` enterable for the `asterisk`
+   user and creates the log and `cdr-csv` folders, the two things a factory
+   reset left broken here (§8.1).
 2. It finds the router's LAN address from the firewall zone named `lan`.
 3. It writes `/etc/asterisk/pjsip.conf`, `extensions.conf`, `rtp.conf`,
    selects Sri Lanka's call-progress tones, and creates the three SIP
@@ -136,6 +141,14 @@ the next `slic-asterisk-setup` run (the old file is kept as `*.bak-DATE`).
 | `/usr/share/slic/asterisk/` | the `slic-fxs` package | the templates the setup copies from |
 | `/etc/asterisk/asterisk.conf` | you (once) | on this router: `astlogdir => /srv/log/asterisk`, with `(!)` removed from `[directories]` so it takes effect (doc 13 §3.3) |
 | `/etc/asterisk/cdr.conf` | package, `usegmtime=no` set by you | call history (CDR) format; needs `asterisk-cdr-csv` installed (doc 13 §3.3) |
+
+**Which of these a LuCI backup keeps:** only files that a package declares
+as its configuration (`asterisk.conf`, `pjsip.conf`, `extensions.conf`,
+`rtp.conf`, `indications.conf`, `cdr.conf`, `ari.conf`, `http.conf`,
+`/etc/config/slic`). The account files and both `*_local.conf` files belong
+to no package, so a backup skips them **unless they're listed in
+`/etc/sysupgrade.conf`** (§8.1). `sysupgrade -l` prints what the next
+backup will contain.
 
 ### 4.2 SIP logins (accounts)
 
@@ -380,8 +393,8 @@ run) plus a firewall rule; think about who else is on that network first.
 A host-PC application can control Asterisk on the router through ARI; the
 application does not need to run on OpenWrt. ARI is a control API, separate
 from the AudioSocket media path used by the RJ11 handset (§5.4 / doc 11 §8).
-Use REST at `https://polarsip.oraian.net/ari` and the event WebSocket at
-`wss://polarsip.oraian.net/ari/events?app=<app-name>`.
+Use REST at `https://polarsip.example.net/ari` and the event WebSocket at
+`wss://polarsip.example.net/ari/events?app=<app-name>`.
 
 #### Install the required module package
 
@@ -440,7 +453,7 @@ browser JavaScript.
 
 #### Proxy HTTPS and WebSockets through Nginx
 
-In the TLS server block for `polarsip.oraian.net`, proxy to Asterisk's local
+In the TLS server block for `polarsip.example.net`, proxy to Asterisk's local
 HTTP listener. The key WebSocket requirement is `proxy_http_version 1.1`:
 
 ```nginx
@@ -474,7 +487,7 @@ asterisk -rx "module show like ari"
 asterisk -rx "module show like chan_rtp"
 asterisk -rx "core show channeltypes" | grep UnicastRTP
 curl -i http://127.0.0.1:8088/ari/asterisk/info
-curl -i https://polarsip.oraian.net/ari/asterisk/info
+curl -i https://polarsip.example.net/ari/asterisk/info
 ```
 
 Without credentials, both API requests should return **401 Unauthorized**
@@ -489,7 +502,7 @@ curl -i --http1.1 \
   -H 'Upgrade: websocket' \
   -H 'Sec-WebSocket-Version: 13' \
   -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
-  'https://polarsip.oraian.net/ari/events?app=probe'
+  'https://polarsip.example.net/ari/events?app=probe'
 ```
 
 A successful authenticated WebSocket client must complete the upgrade (HTTP
@@ -520,6 +533,8 @@ After each, `logread -e slicctl | tail` should end with `0 frames dropped`.
 
 | Symptom | Likely cause | Check / fix |
 |---|---|---|
+| Asterisk isn't running, and starting it changes nothing | `/etc/asterisk` is closed to the `asterisk` user (mode 700, e.g. after a backup restore) | run it in the foreground: `asterisk -U asterisk -f -vvv` ends with `'modules.conf' invalid or missing … ASTERISK EXITING!`. Fix: `chmod 755 /etc/asterisk` (§8.1) |
+| Asterisk runs, but `module show like res_rtp_asterisk` lists nothing | Asterisk was installed by hand with a different package set, so packages the dialplan needs are missing (23 of the setup's 28 here: call audio, the AudioSocket channel, `System()`, `SHELL()`, codecs, prompts) | `apk update`, then re-run `slic-asterisk-setup` (without `--no-apk`) |
 | Dial tone, but any number gives busy tone at once | Asterisk not running, or the dial hook failed | `logread -e slicctl \| tail` (`dial hook failed`, `cannot place a call`); `pidof asterisk` |
 | Digits not heard (log shows no `digit` lines) | phone in pulse mode; very weak keypad | set the phone to tone (DTMF) dialling; doc 10 §8 |
 | Number dialled too early | you paused > 3 s | dial faster, end with `#`, or raise `dial_timeout` |
@@ -549,6 +564,23 @@ tar czf /root/backups/asterisk-$(date +%Y%m%d).tgz /etc/asterisk /etc/config/sli
     /etc/smsd.conf /etc/config/system      # SMS + log settings (doc 13)
 ```
 
+A LuCI backup (System → Backup / Flash Firmware) is **not** the same thing:
+on its own it misses the accounts and your own files (§4.1). Add them to
+its list once, on the router:
+
+```sh
+cat >> /etc/sysupgrade.conf <<'EOF'
+/etc/asterisk/pjsip_accounts.conf
+/etc/asterisk/pjsip_secrets.conf
+/etc/asterisk/pjsip_local.conf
+/etc/asterisk/extensions_local.conf
+/etc/smsd.conf
+EOF
+sysupgrade -l | grep -E 'pjsip_|_local|smsd'   # now listed (files that exist)
+```
+
+From then on the LuCI backup holds the SIP passwords, so keep it private.
+
 **Upgrade the phone package** (new `slic-fxs` build): `apk add
 --allow-untrusted /tmp/slic-fxs-*.apk`. This updates the daemon, the
 templates and the setup script; your `/etc/asterisk` is untouched until you
@@ -556,7 +588,7 @@ re-run `slic-asterisk-setup --no-apk` to apply new templates.
 
 **After an OpenWrt upgrade**: rebuild the kmods for the new kernel (doc 09
 §10), `apk update`, then re-run `slic-asterisk-setup` (reinstalls the
-Asterisk packages if the upgrade dropped them).
+Asterisk packages if the upgrade dropped them). After a factory reset, §8.1.
 
 **Turn the PBX off** (phone port keeps working as before, without dialling
 out): `/etc/init.d/asterisk stop; /etc/init.d/asterisk disable`.
@@ -564,6 +596,60 @@ out): `/etc/init.d/asterisk stop; /etc/init.d/asterisk disable`.
 **Remove it**: stop and disable as above, then `apk del` the `asterisk*`
 packages (list them with `apk list -I | grep ^asterisk`). `/etc/asterisk`
 stays behind; delete it yourself if you want the passwords gone.
+
+### 8.1 After a factory reset (update 2026-11-05)
+
+What happened here: the router was reset to factory settings and moved to
+OpenWrt 25.12.6. The LuCI backup was restored and Asterisk was reinstalled.
+Asterisk then never stayed up. Three separate things had gone wrong, and the
+first one hid the other two.
+
+1. **The restore closed the config folder.** The backup was restored before
+   Asterisk was installed (its `ari.conf` dates from 14:40, the package from
+   18:30). So the restore created `/etc/asterisk` itself, mode `0700`, root
+   only, and the later package install didn't change it. Asterisk reads
+   `asterisk.conf` as root, switches to user `asterisk`, and from then on
+   can't open a single file. It stops with `'modules.conf' invalid or missing`
+   → `Module initialization failed. ASTERISK EXITING!`. At boot that line goes
+   only to the system log, and nothing restarts the service, so all you see
+   is "not running". **Fix:** `chmod 755 /etc/asterisk`. The setup does this
+   on every run since `slic-fxs` r6.
+2. **The backup had no accounts.** It held the package config files but not
+   `pjsip_accounts.conf`, `pjsip_secrets.conf` or `extensions_local.conf`
+   (§4.1), so every SIP login and your own numbers were gone. The passwords
+   can't be recovered; the setup makes new ones. **Fix for next time:** the
+   `/etc/sysupgrade.conf` lines in §8.
+3. **A different package set.** Asterisk was reinstalled with the ARI
+   packages only. 23 of the 28 packages the setup installs were missing,
+   the RTP stack that carries call audio among them. **Fix:** run the setup
+   without `--no-apk`.
+
+**Rebuild order** (each step assumes the one before it):
+
+```sh
+# 0. USB extroot, kmods for the new kernel, slic-fxs (doc 09 §10)
+apk update
+# 1. restore the LuCI backup (any time; with slic-fxs r5 or older, follow it
+#    with: chmod 755 /etc/asterisk)
+# 2. the PBX: modules, configs, folders, accounts. Keeps restored passwords;
+#    makes new ones for accounts whose secret is missing
+ACCOUNTS="201 202 203" slic-asterisk-setup
+# 3. logs, call history and time zone on the USB stick: doc 13 §3.5
+# 4. your own numbers: put extensions_local.conf back, then
+asterisk -rx 'dialplan reload'
+# 5. the §2 "Check it worked" list and the §6 checklist; re-enter any new
+#    passwords on the devices
+```
+
+On this router it was done in that order, with accounts 201–205, all five
+with new passwords. The ARI config (`ari.conf`, `http.conf`) and the Nginx
+site came back with the backup. `extensions_local.conf` was rewritten from
+the ARI app's own deployment notes (`Stasis()` routes for `1717` and
+`1717#`). **Verified 2026-11-05:** Asterisk stays up; all the modules above
+are `Running`, including `UnicastRTP` for ARI external media. A call file to
+601 answered and played to the end, and its call record has local time.
+**Not yet re-tested:** the handset, softphones (new passwords), and the ARI
+app itself.
 
 ---
 
@@ -612,6 +698,11 @@ For the record, in order:
     local and HTTPS ARI probes then returned the expected 401 challenge
     instead of 404. No credential is recorded here; rotate any secret exposed
     during setup.
+11. **Factory reset (2026-11-05):** after the reset and the move to 25.12.6,
+    Asterisk exited at every start. The restored backup had created
+    `/etc/asterisk` as `0700`, the accounts weren't in the backup, and 23 of
+    the setup's 28 packages were missing. Rebuilt as in §8.1; `slic-fxs` r6's setup now
+    repairs the folder itself.
 
 ## How obtained
 

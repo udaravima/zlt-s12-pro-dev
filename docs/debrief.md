@@ -180,6 +180,19 @@ Router, SMS and logs (Oct 13, doc 13): packages `smstools3`, `sms-tool`,
 `asterisk.conf` `[directories]` made live with `astlogdir => /srv/log/asterisk`;
 `cdr.conf` `usegmtime=no`. Originals in `/root/backups/persist-20261013/`.
 
+Router, after the factory reset and the move to 25.12.6 (late Oct; PBX
+rebuilt 2026-11-05, doc 12 §8.1): the LuCI backup restored only package
+config files, so **anything above that isn't one may be gone. Only the
+PBX, SMS and log items were re-checked.** The 2026-11-05 changes:
+`/etc/asterisk` mode 700 → 755; the setup's Asterisk packages plus
+`asterisk-chan-rtp`, `asterisk-app-stasis`, `asterisk-cdr-csv`,
+`zoneinfo-asia`; `/srv/log/asterisk{,/cdr-csv}` (asterisk:asterisk 750);
+accounts 201–205 regenerated; `extensions_local.conf` rewritten (ARI app
+routes); `/etc/sysupgrade.conf` now lists `pjsip_accounts.conf`,
+`pjsip_secrets.conf`, `pjsip_local.conf`, `extensions_local.conf`,
+`/etc/smsd.conf`. Pre-change copy of `/etc/asterisk` in
+`/root/backups/asterisk-recovery-20261105/`.
+
 ## Open items, in priority order
 
 1. **usb0 route-vanish** (Oct 2 regression): after a pppoe restart, wwan_4's
@@ -191,7 +204,7 @@ Router, SMS and logs (Oct 13, doc 13): packages `smstools3`, `sms-tool`,
 2. **4G direction**: Dialog SIM test or antenna repositioning — the Oct 2
    test proved config can't fix it (coverage + SIM).
 3. **Voice/SMS exercise**: SMS round trip done 2026-10-13 with smstools3
-   (doc 13); still to do: a reboot test of the SMS/log paths. (The RJ11 handset
+   (doc 13); reboot test of the SMS/log paths passed after 2026-10-14. (The RJ11 handset
    now works through the router's own SLIC and Asterisk, docs 09–11; GSM
    voice through the modem is still untried.)
 3a. **PBX follow-ups** (doc 11 §11): echo cancellation for apps, the

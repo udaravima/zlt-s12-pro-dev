@@ -575,8 +575,8 @@ Verified 2026-10-11: dialled from the handset, the PC heard and recorded
 
 ARI is a separate **control plane** from the AudioSocket media path above.
 A host-PC service can use authenticated REST requests at
-`https://polarsip.oraian.net/ari` and receive events over
-`wss://polarsip.oraian.net/ari/events?app=<app-name>`. The ARI setup and
+`https://polarsip.example.net/ari` and receive events over
+`wss://polarsip.example.net/ari/events?app=<app-name>`. The ARI setup and
 checks are in [doc 12 §5.6](12-pbx-setup-guide.md#56-ari-control-from-a-host-pc).
 
 Keep Asterisk's HTTP listener bound to `127.0.0.1:8088`; Nginx terminates TLS
@@ -609,6 +609,9 @@ RJ11 phone.
 | `cdr show status` says logging is enabled | no call history anywhere; `cdr-csv/` stays empty | no backend is installed: `apk add asterisk-cdr-csv` |
 | CDR times 5:30 h behind, even with `usegmtime=no` | timestamps in UTC | Asterisk reads `/etc/localtime`, not OpenWrt's `/etc/TZ`: `apk add zoneinfo-asia`, then `/etc/init.d/system reload` |
 | Asterisk's files under `/var` | log, call history (and any voicemail) gone after a reboot | `/var` is RAM; `astlogdir => /srv/log/asterisk` (doc 13) |
+| A LuCI backup restored **before** Asterisk is installed (2026-11-05) | Asterisk exits at every start: `'modules.conf' invalid or missing`, `Module initialization failed` | the restore created `/etc/asterisk` as `0700`; Asterisk reads `asterisk.conf` as root, then switches to user `asterisk` and can't enter the folder. `chmod 755 /etc/asterisk`; the setup does it since `slic-fxs` r6 (doc 12 §8.1) |
+| "The LuCI backup has my PBX" (2026-11-05) | after a factory reset: no SIP accounts, no own numbers | the backup holds only package config files. List `pjsip_accounts.conf`, `pjsip_secrets.conf` and both `*_local.conf` in `/etc/sysupgrade.conf` (doc 12 §8) |
+| `cdr_csv` with a custom `astlogdir` | `Master.csv` never appears | it doesn't create `cdr-csv/`, and the init script only creates `/var/log/asterisk/cdr-csv`. The setup creates it since r6 |
 
 ---
 

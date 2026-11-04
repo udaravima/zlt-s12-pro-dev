@@ -5,17 +5,17 @@
 #   *.s16 test audio, slic-play.sh
 #
 # Prereqs (see the phone-port doc, "How to reproduce"):
-#   - OpenWrt SDK 25.12.5 ramips/mt7621 unpacked at $SDK
+#   - OpenWrt SDK 25.12.6 ramips/mt7621 unpacked at $SDK
 #   - ./slicctl/fetch-vpapi.sh run once
 #   - optional: ./slicctl/stock_profiles.c (tools/extract_profiles.py on a
 #     stock dump) adds Tozed's DC/ring set, selectable with SLIC_DC/SLIC_RING=B
 # Fails loudly: a stale .ko must never be deployed (kernel builds use -Werror,
 # and a failed build would otherwise leave the previous .ko in place).
 set -e
-SDK=${SDK:-$HOME/owrt-sdk/openwrt-sdk-25.12.5-ramips-mt7621_gcc-14.3.0_musl.Linux-x86_64}
+SDK=${SDK:-$HOME/owrt-sdk/openwrt-sdk-25.12.6-ramips-mt7621_gcc-14.3.0_musl.Linux-x86_64}
 HERE=$(cd "$(dirname "$0")" && pwd)
 OUT=$HERE/build
-KVER=6.12.94
+KVER=${KVER:-6.12.112}
 mkdir -p "$OUT"
 
 # --- kernel modules ---

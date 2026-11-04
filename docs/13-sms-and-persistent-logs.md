@@ -265,6 +265,17 @@ re-running it keeps these changes. **After an Asterisk package upgrade**,
 re-check the `Log directory` line: a new stock `asterisk.conf` would bring
 `(!)` back.
 
+**Update 2026-11-05 (after a factory reset):** the LuCI backup brought back
+`asterisk.conf`, `cdr.conf` and the `system` log settings, because they are
+package config files. It did **not** bring back the packages
+(`asterisk-cdr-csv`, `zoneinfo-asia`), the `/srv/log/asterisk` folders, or
+`/etc/smsd.conf`, which belongs to no package's config list. So the system
+log kept going to `/srv/log/messages`, but Asterisk's log and call history
+had nowhere to go, and timestamps went back to UTC. The block above, run
+again, fixed it. `slic-fxs` r6's setup now installs `asterisk-cdr-csv` and
+creates the two folders itself. `/etc/smsd.conf` is now listed in
+`/etc/sysupgrade.conf` (doc 12 §8).
+
 ---
 
 ## 4. Verify checklist
@@ -282,8 +293,10 @@ re-check the `Log directory` line: a new stock `asterisk.conf` would bring
 
 ## 5. Open items
 
-- **Reboot test not done yet** (last row above). Everything is on the USB
-  root filesystem, so it should hold, but that's inferred, not seen.
+- ~~Reboot test not done yet~~ **Done** after the 2026-10-14 commit: the
+  owner rebooted, and the system log, the Asterisk log and the received SMS
+  were all still there afterwards. A *factory reset* is a different matter,
+  see the §3.5 update.
 - **Asterisk's `messages.log` doesn't rotate by itself.** Asterisk only
   rotates on `logger rotate`. At `notice,warning,error` level it grows slowly
   (a few KB in two days here), so this is not urgent. A weekly cron

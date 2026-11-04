@@ -24,6 +24,21 @@ The project outgrew its original goal. Timeline of scope:
    sends SMS through the modem; received SMS, the system log, Asterisk's log
    and call history moved from RAM to the USB root filesystem (doc 13).
 
+## Current state: PBX rebuilt after a factory reset (2026-11-05)
+
+- The router was reset to factory settings and moved to **OpenWrt 25.12.6**;
+  kmods r3 and `slic-fxs` r5 were rebuilt for kernel 6.12.112 (build script
+  in 432e850). Asterisk then exited at every start: restoring the LuCI
+  backup before the install had created `/etc/asterisk` as `0700`.
+- **Rebuilt (doc 12 §8.1):** folder mode, the missing Asterisk packages,
+  accounts 201–205 (new passwords), the `/srv/log/asterisk` folders, the ARI
+  app's `Stasis()` routes. Files the backup skipped are now listed in
+  `/etc/sysupgrade.conf`. `slic-fxs` r6 (in the repo, **not yet built or
+  installed**) makes the setup repair the folder and log paths itself.
+- **Verified:** Asterisk up, modules running (incl. `UnicastRTP`), an
+  internal call to 601 played through, local-time call record. **Not yet
+  re-tested:** handset, softphones, the ARI app.
+
 ## Current state: SMS + persistent logs (2026-10-13, verified live)
 
 - **SMS:** smstools3, `/etc/smsd.conf`; received SMS in
@@ -33,8 +48,8 @@ The project outgrew its original goal. Timeline of scope:
 - **Logs on disk:** system log `/srv/log/messages` (1 MiB + one `.old`),
   Asterisk log and call history (CDR, local time) in `/srv/log/asterisk/`.
   New packages: `asterisk-cdr-csv`, `zoneinfo-asia`.
-- **Not done:** a reboot test of the above; Asterisk's own log doesn't
-  rotate. Rebuild steps and traps: doc 13.
+- **Reboot test passed** (after the 2026-10-14 commit). **Not done:**
+  Asterisk's own log doesn't rotate. Rebuild steps and traps: doc 13.
 
 ## Current state: home PBX (2026-10-11, verified live)
 
