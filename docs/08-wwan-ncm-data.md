@@ -256,8 +256,9 @@ default via 100.64.3.82 dev usb0  metric 50  (secondary, failover-grade)
 
 - Firewall: `wwan` (and `wwan2`) are in the `wan` zone (masq on) —
   LAN→modem NAT works the moment routing sends traffic there. The zone's
-  `network` list contains ~10 duplicate `'wwan'` entries (harmless LuCI
-  artifact, worth cleaning during router hygiene).
+  `network` list contains ~10 duplicate `'wwan'` entries. (Update
+  2026-11-15: the cause isn't LuCI. A stock board script stages one more on
+  every boot, and LuCI's Save & Apply then commits it; doc 14 §3.)
 - mwan3 is installed but not usable as-is: its `wan` section tracks a
   netifd interface literally named `wan` which doesn't exist in this
   config (the pppoe iface is `slt_internet_wan`), and `wanb` is
@@ -336,7 +337,8 @@ ping -c3 8.8.8.8               # default path (pppoe) still primary
 3. **`wwan_6` / ipv6='auto'** — dynamic dhcpv6 iface spawns each ifup;
    untested whether the modem serves v6 at all.
 4. **Firewall zone cleanup** — duplicate `wwan` entries in wan zone
-   network list (cosmetic).
+   network list (cosmetic). Cause found and a fix scripted in
+   `router_fw_provision.sh` (doc 14 §3), not yet applied live.
 5. **AT+CGATT residual context** — modem had a network-activated PDP with
    blank APN before we ever dialed (doc 07); harmless but worth rechecking
    with the real dial in place.

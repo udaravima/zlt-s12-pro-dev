@@ -23,6 +23,24 @@ The project outgrew its original goal. Timeline of scope:
 8. **SMS gateway + logs that survive a reboot** — smstools3 receives and
    sends SMS through the modem; received SMS, the system log, Asterisk's log
    and call history moved from RAM to the USB root filesystem (doc 13).
+9. **Firewall check-up + provisioning** — a read-only audit script and an
+   idempotent provisioning script that restores the hardened firewall,
+   SSH and nginx state after a reset (doc 14).
+
+## Current state: firewall check-up (2026-11-15)
+
+- **Audit (live): 0 FAIL, 8 WARN.** Nothing is exposed. WAN input and forward
+  are `REJECT`, there are no port forwards, and UPnP and AMI are off.
+  45,216 WAN packets were rejected in about 12 h. The WARNs are services
+  where the firewall is the only layer: SSH on every interface with
+  passwords allowed, and the ARI nginx site open to any source. There are
+  also the stock IPsec passthrough rules, and duplicate `wwan` entries.
+- **Found:** stock OpenWrt's board script for this model stages "add `wwan`
+  to zone wan" on *every* boot. The next LuCI Save & Apply commits it as
+  one more duplicate (doc 14 §3).
+- **`scripts/router_fw_provision.sh`:** dry run live (9 changes planned),
+  `--apply` tested on copies only. **Not applied live yet**: it switches SSH
+  to key-only, which needs the owner's OK.
 
 ## Current state: PBX rebuilt after a factory reset (2026-11-05)
 
@@ -194,13 +212,16 @@ repositioning toward Mobitel LTE coverage.
 | `11-pbx-asterisk.md` | Home PBX: Asterisk on the router (apk), LAN-only SIP, the phone as extension 100 over AudioSocket, keypad DTMF detection, app/AI-agent hook (ext 800), pitfalls, SLT trunk plan |
 | `12-pbx-setup-guide.md` | PBX hands-on guide: install, everyday commands, every setting and where it lives, adding accounts and your own numbers, connecting softphones / desk phones / apps, test checklist, troubleshooting, backup, how it was set up here |
 | `13-sms-and-persistent-logs.md` | SMS gateway (smstools3: SIM storage, init strings, send/receive) and moving logs, call history and SMS off RAM: what must stay in `/var`, system log to disk, Asterisk log dir + CDR + time zone; rebuild guide |
+| `14-firewall-security.md` | Firewall security check-up: who can reach the router (CGNAT, carrier network, LAN), every check and today's result, the boot-time duplicate `wwan` bug, the audit and provisioning scripts (what they change, safety rails, test mode) |
 | `debrief.md` | From-the-beginning briefing: status, stories, decisions, open items |
 
 ## Artifacts
 
 - `docs/` — this knowledge base
 - `scripts/` — `modem_send.py` (modem-side streamer),
-  `router_dump_mtd.sh` (dump orchestrator), `modem_bench.py` (throughput)
+  `router_dump_mtd.sh` (dump orchestrator), `modem_bench.py` (throughput),
+  `router_fw_audit.sh` / `router_fw_provision.sh` (firewall check-up and
+  provisioning, doc 14)
 - `fxs/` — RJ11 phone port: kernel modules (`kmod-slic-mt7621/`),
   `slic-fxs/` package (daemon, init script, config, dial hook), `asterisk/`
   (PBX templates + `slic-asterisk-setup`), `slicctl` SLIC tool, `build.sh`, profile extractor, PCM analyser, test audio,

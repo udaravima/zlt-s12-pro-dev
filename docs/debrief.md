@@ -210,8 +210,13 @@ routes); `/etc/sysupgrade.conf` now lists `pjsip_accounts.conf`,
 3a. **PBX follow-ups** (doc 11 §11): echo cancellation for apps, the
    Sri Lanka bell cadence, SLT SIP trunk (deferred).
 4. **Router hygiene**: luci-theme-bootstrap (1.5 MB = 45% of overlay),
-   `*.bak-*` files, `.apk-new` orphans, duplicate `wwan` entries in the
-   firewall zone.
+   `*.bak-*` files, `.apk-new` orphans. The duplicate `wwan` entries in the
+   firewall zone come from a stock board script at every boot (doc 14 §3);
+   `router_fw_provision.sh` cleans them up and adds a boot guard, but that
+   has not been applied live yet (doc 14 §7).
+4a. **Firewall** (doc 14): audit 0 FAIL / 8 WARN on 2026-11-15. Apply the
+   provisioning (SSH key-only + LAN-only, ARI site LAN-only, drop the IPsec
+   passthrough), then reboot once to check the guard.
 5. **Persist the usb2 management link** (uci on router + adb-side modem
    setup at boot).
 6. **Cross-toolchain** (armv7, static musl or glibc ≥ 2.27) → tiny static
@@ -233,9 +238,10 @@ Mobitel SIM roaming-denied there — needs Dialog SIM or antenna).
 
 ## Artifacts
 
-- `docs/` — this knowledge base (01–12 + README + this file)
+- `docs/` — this knowledge base (01–14 + README + this file)
 - `fxs/` — phone port and PBX: kernel modules, `slicctl` daemon,
   packages, Asterisk templates, tools
-- `scripts/` — modem_send.py, router_dump_mtd.sh, modem_bench.py
+- `scripts/` — modem_send.py, router_dump_mtd.sh, modem_bench.py,
+  router_fw_audit.sh, router_fw_provision.sh (doc 14)
 - `modem-fw-dump/` — mtd0–7 images + md5s (+ ofonod.bin strings
   copy, tz.profile backup)

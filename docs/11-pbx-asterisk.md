@@ -178,7 +178,7 @@ Four independent layers stop that:
 |---|---|---|
 | Bind address | `transport-lan-udp/tcp: bind=<LAN IP>:5060` | Asterisk doesn't even listen on the WAN side (verified with `netstat`: only `192.168.x.254:5060`) |
 | Asterisk ACL | `[lan-only] type=acl`: deny all, permit the LAN subnet and 127.0.0.1 | requests from elsewhere are rejected before authentication |
-| Firewall | zone `wan` input `REJECT`, no port forwards | the router drops it anyway |
+| Firewall | zone `wan` input `REJECT`, no port forwards (checked by `scripts/router_fw_audit.sh`, doc 14) | the router drops it anyway |
 | Passwords | random 20-character, per account, file mode 0600 | a LAN device still has to log in |
 
 RTP (the audio itself, UDP 10000–10199) binds to all addresses, as Asterisk
