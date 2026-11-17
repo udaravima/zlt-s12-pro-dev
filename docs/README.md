@@ -26,6 +26,26 @@ The project outgrew its original goal. Timeline of scope:
 9. **Firewall check-up + provisioning** — a read-only audit script and an
    idempotent provisioning script that restores the hardened firewall,
    SSH and nginx state after a reset (doc 14).
+10. **Rebuild after a factory reset, scripted** — extroot attach, the
+   package list, the PBX setup with ARI, then the firewall: one runbook
+   (doc 15).
+
+## Current state: rebuild runbook + package cleanup (2026-11-17)
+
+- **`scripts/router_extroot.sh`**: status, and attach (never formats; an old
+  overlay on the stick is archived, not deleted). **`scripts/router_packages.sh`**:
+  snapshot, check and restore of the 126 packages added on top of the
+  firmware (`scripts/router-packages.txt`), plus 3 locally built ones. Both
+  were tested live and on stand-in folders. The full reset sequence hasn't
+  been run yet (doc 15 §3).
+- **The firmware already has extroot support** (`block-mount`, usb-storage,
+  ext4). Internal writable flash: 4.1 MiB. Extroot: `LABEL=extroot`, 7.2 GiB.
+- **Removed 13 unused Asterisk packages** (phoneprov, `app-sms`, 6 file
+  formats, …). Asterisk went from 73 to 60 packages; ARI still answers and a
+  test call played (doc 15 §4).
+- **`slic-asterisk-setup` (r6)** now installs the ARI group when `ari.conf`
+  enables ARI. Before, a reset would have brought the PBX back without the
+  call agent's ARI. r6 is built in `fxs/build`, not installed on the router.
 
 ## Current state: firewall check-up (2026-11-15)
 
@@ -51,7 +71,7 @@ The project outgrew its original goal. Timeline of scope:
 - **Rebuilt (doc 12 §8.1):** folder mode, the missing Asterisk packages,
   accounts 201–205 (new passwords), the `/srv/log/asterisk` folders, the ARI
   app's `Stasis()` routes. Files the backup skipped are now listed in
-  `/etc/sysupgrade.conf`. `slic-fxs` r6 (in the repo, **not yet built or
+  `/etc/sysupgrade.conf`. `slic-fxs` r6 (built 2026-11-17, **not yet
   installed**) makes the setup repair the folder and log paths itself.
 - **Verified:** Asterisk up, modules running (incl. `UnicastRTP`), an
   internal call to 601 played through, local-time call record. **Not yet
@@ -213,6 +233,7 @@ repositioning toward Mobitel LTE coverage.
 | `12-pbx-setup-guide.md` | PBX hands-on guide: install, everyday commands, every setting and where it lives, adding accounts and your own numbers, connecting softphones / desk phones / apps, test checklist, troubleshooting, backup, how it was set up here |
 | `13-sms-and-persistent-logs.md` | SMS gateway (smstools3: SIM storage, init strings, send/receive) and moving logs, call history and SMS off RAM: what must stay in `/var`, system log to disk, Asterisk log dir + CDR + time zone; rebuild guide |
 | `14-firewall-security.md` | Firewall security check-up: who can reach the router (CGNAT, carrier network, LAN), every check and today's result, the boot-time duplicate `wwan` bug, the audit and provisioning scripts (what they change, safety rails, test mode) |
+| `15-rebuild-after-reset.md` | Factory reset → working router: why the order is extroot → backup → packages → own builds → PBX → firewall, the runbook with commands, what each script was tested with, the package list and the 2026-11-17 Asterisk cleanup |
 | `debrief.md` | From-the-beginning briefing: status, stories, decisions, open items |
 
 ## Artifacts
@@ -221,7 +242,8 @@ repositioning toward Mobitel LTE coverage.
 - `scripts/` — `modem_send.py` (modem-side streamer),
   `router_dump_mtd.sh` (dump orchestrator), `modem_bench.py` (throughput),
   `router_fw_audit.sh` / `router_fw_provision.sh` (firewall check-up and
-  provisioning, doc 14)
+  provisioning, doc 14), `router_extroot.sh`, `router_packages.sh` +
+  `router-packages.txt` (rebuild after a reset, doc 15)
 - `fxs/` — RJ11 phone port: kernel modules (`kmod-slic-mt7621/`),
   `slic-fxs/` package (daemon, init script, config, dial hook), `asterisk/`
   (PBX templates + `slic-asterisk-setup`), `slicctl` SLIC tool, `build.sh`, profile extractor, PCM analyser, test audio,

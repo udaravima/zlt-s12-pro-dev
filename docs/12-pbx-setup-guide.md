@@ -624,15 +624,21 @@ first one hid the other two.
    the RTP stack that carries call audio among them. **Fix:** run the setup
    without `--no-apk`.
 
-**Rebuild order** (each step assumes the one before it):
+**Rebuild order** (each step assumes the one before it). For the whole
+router, with scripts for the extroot, the package list and the firewall,
+follow **doc 15** (update 2026-11-17). The PBX part of it:
 
 ```sh
-# 0. USB extroot, kmods for the new kernel, slic-fxs (doc 09 §10)
+# 0. USB extroot, kmods for the new kernel, slic-fxs (doc 15 steps 2-5;
+#    doc 09 §10 to rebuild the kmods)
 apk update
 # 1. restore the LuCI backup (any time; with slic-fxs r5 or older, follow it
 #    with: chmod 755 /etc/asterisk)
 # 2. the PBX: modules, configs, folders, accounts. Keeps restored passwords;
-#    makes new ones for accounts whose secret is missing
+#    makes new ones for accounts whose secret is missing. From r6 it also
+#    installs the ARI group (res-ari + 12 resources) when the restored
+#    ari.conf has ARI enabled (--with-ari / --no-ari to choose), and names
+#    hand-added Asterisk packages it doesn't use
 ACCOUNTS="201 202 203" slic-asterisk-setup
 # 3. logs, call history and time zone on the USB stick: doc 13 §3.5
 # 4. your own numbers: put extensions_local.conf back, then

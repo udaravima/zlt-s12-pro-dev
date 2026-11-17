@@ -4,6 +4,11 @@
 #
 #   slic-asterisk-setup              install modules, configs, secrets; start
 #   slic-asterisk-setup --no-apk     skip `apk add` (modules already there)
+#   slic-asterisk-setup --with-ari   also install ARI (REST + events) for apps
+#                                    like the call agent; automatic when
+#                                    ari.conf already has enabled = yes
+#                                    (e.g. restored from a backup); --no-ari
+#                                    skips it
 #   slic-asterisk-setup --new-passwords   new passwords for every account
 #   ACCOUNTS="204 205" slic-asterisk-setup --no-apk   add SIP accounts (2XX)
 #   APP=192.168.1.20:9092 slic-asterisk-setup   AudioSocket app for ext 800
@@ -13,7 +18,8 @@
 #
 # What it does, in order:
 #   1. apk add the Asterisk modules this setup uses, including the ARI
-#      WebSocket client provider (official telephony feed); then makes
+#      WebSocket client provider (official telephony feed), plus the ARI
+#      group when wanted; notes hand-added Asterisk packages it doesn't use; then makes
 #      /etc/asterisk enterable for the asterisk user and creates the log and
 #      call-history folders (both lost or wrong after a factory reset)
 #   2. finds the LAN address from the firewall's "lan" zone
@@ -41,25 +47,51 @@ MODULES="asterisk asterisk-pjsip asterisk-res-rtp-asterisk asterisk-bridge-simpl
  asterisk-format-gsm asterisk-format-wav asterisk-format-sln asterisk-res-musiconhold
  asterisk-app-senddtmf asterisk-app-originate asterisk-res-websocket-client asterisk-chan-rtp
  asterisk-app-stasis asterisk-cdr-csv"
+# ARI: the REST interface plus every resource. Each res-ari-* is a separate
+# package and res-ari pulls in none of them; a missing one makes its URLs 404.
+# (The call agent uses asterisk, bridges, channels, endpoints, events.)
+ARI_MODULES="asterisk-res-ari asterisk-res-ari-model asterisk-res-ari-applications
+ asterisk-res-ari-asterisk asterisk-res-ari-bridges asterisk-res-ari-channels
+ asterisk-res-ari-device-states asterisk-res-ari-endpoints asterisk-res-ari-events
+ asterisk-res-ari-mailboxes asterisk-res-ari-playbacks asterisk-res-ari-recordings
+ asterisk-res-ari-sounds"
 
-do_apk=1 newpw=0
+do_apk=1 newpw=0 ari=auto
 for a in "$@"; do
 	case $a in
 	--no-apk) do_apk=0 ;;
 	--new-passwords) newpw=1 ;;
-	*) echo "usage: [APP=host:port] [ACCOUNTS='2XX ...'] [TONES=cc] $0 [--no-apk] [--new-passwords]" >&2; exit 2 ;;
+	--with-ari) ari=1 ;;
+	--no-ari) ari=0 ;;
+	*) echo "usage: [APP=host:port] [ACCOUNTS='2XX ...'] [TONES=cc] $0 [--no-apk] [--new-passwords] [--with-ari|--no-ari]" >&2; exit 2 ;;
 	esac
 done
 
 die() { echo "slic-asterisk-setup: $*" >&2; exit 1; }
 
+# ARI on "auto": wanted when ari.conf's [general] says enabled = yes
+if [ $ari = auto ]; then
+	ari=0
+	case $(sed -n '/^\[general\]/,/^\[/s/^[[:space:]]*enabled[[:space:]]*=[[:space:]]*\([A-Za-z0-9]*\).*/\1/p' \
+		"$ETC/ari.conf" 2>/dev/null | head -n 1) in
+	yes | true | 1) ari=1 ;;
+	esac
+fi
+[ $ari = 1 ] && MODULES="$MODULES $ARI_MODULES"
+
 # 1. modules
 if [ $do_apk = 1 ]; then
-	echo "installing Asterisk modules..."
+	echo "installing Asterisk modules$([ $ari = 1 ] && echo ' (with ARI)')..."
 	# shellcheck disable=SC2086
 	apk add $MODULES >/dev/null || die "apk add failed (run 'apk update' first?)"
 fi
 [ -x /usr/sbin/asterisk ] || die "asterisk is not installed"
+# report Asterisk packages someone added by hand that this setup doesn't use
+# (only explicit ones: dependencies never appear in /etc/apk/world)
+extra=$(sed 's/[<>=~].*//' /etc/apk/world 2>/dev/null | grep '^asterisk' | while read -r p; do
+	case " $(echo $MODULES $ARI_MODULES) " in *" $p "*) ;; *) printf ' %s' "$p" ;; esac
+done)
+[ -n "$extra" ] && echo "note: also installed, not used by this setup:$extra"
 
 # 1b. Asterisk reads asterisk.conf as root, then switches to user asterisk and
 # reads everything else. A backup restored before the package was installed

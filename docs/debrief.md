@@ -193,6 +193,13 @@ routes); `/etc/sysupgrade.conf` now lists `pjsip_accounts.conf`,
 `/etc/smsd.conf`. Pre-change copy of `/etc/asterisk` in
 `/root/backups/asterisk-recovery-20261105/`.
 
+Router, 2026-11-17 (doc 15 §4): `apk del` of 13 unused Asterisk packages
+(phoneprov ×2, `app-sms`, `format-g719/g723/g726/g729/h263/h264`,
+`func-base64`, `func-talkdetect`, `app-authenticate`, `res-clialiases`), then
+an Asterisk restart. The previous `world` and installed list are in
+`/root/backups/apk-prune-20261117-121544/`. Nothing else was changed.
+`router_fw_provision.sh` has still not been applied.
+
 ## Open items, in priority order
 
 1. **usb0 route-vanish** (Oct 2 regression): after a pppoe restart, wwan_4's
@@ -217,6 +224,9 @@ routes); `/etc/sysupgrade.conf` now lists `pjsip_accounts.conf`,
 4a. **Firewall** (doc 14): audit 0 FAIL / 8 WARN on 2026-11-15. Apply the
    provisioning (SSH key-only + LAN-only, ARI site LAN-only, drop the IPsec
    passthrough), then reboot once to check the guard.
+4b. **Rebuild runbook** (doc 15): every script is tested on its own; run
+   the whole sequence once for real. Install `slic-fxs` r6, and take a
+   fresh LuCI backup.
 5. **Persist the usb2 management link** (uci on router + adb-side modem
    setup at boot).
 6. **Cross-toolchain** (armv7, static musl or glibc ≥ 2.27) → tiny static
@@ -238,10 +248,11 @@ Mobitel SIM roaming-denied there — needs Dialog SIM or antenna).
 
 ## Artifacts
 
-- `docs/` — this knowledge base (01–14 + README + this file)
+- `docs/` — this knowledge base (01–15 + README + this file)
 - `fxs/` — phone port and PBX: kernel modules, `slicctl` daemon,
   packages, Asterisk templates, tools
 - `scripts/` — modem_send.py, router_dump_mtd.sh, modem_bench.py,
-  router_fw_audit.sh, router_fw_provision.sh (doc 14)
+  router_fw_audit.sh, router_fw_provision.sh (doc 14), router_extroot.sh,
+  router_packages.sh + router-packages.txt (doc 15)
 - `modem-fw-dump/` — mtd0–7 images + md5s (+ ofonod.bin strings
   copy, tz.profile backup)
