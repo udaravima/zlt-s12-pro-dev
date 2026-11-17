@@ -8,7 +8,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-slic-fxs
 PKG_VERSION:=2026.11.17
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_LICENSE:=GPL-2.0-only
 
 include $(INCLUDE_DIR)/package.mk
@@ -17,7 +17,7 @@ define Package/luci-app-slic-fxs
   SECTION:=luci
   CATEGORY:=LuCI
   SUBMENU:=3. Applications
-  TITLE:=LuCI pages for the RJ11 phone port (status, line settings)
+  TITLE:=LuCI pages for the RJ11 phone port (status, SIP accounts, line settings)
   DEPENDS:=+luci-base +rpcd-mod-ucode +ucode-mod-fs +ucode-mod-ubus +ucode-mod-uci +slic-fxs
   PKGARCH:=all
 endef
@@ -27,8 +27,11 @@ define Package/luci-app-slic-fxs/description
   state, handset, last call, recent events) and, if Asterisk is installed,
   the PBX: SIP phones with where they registered from, active calls, HEP
   capture, recent problems from Asterisk's log, and a warning when a module
-  could not hook into PJSIP's full module table. "Phone line" edits
-  /etc/config/slic. Data comes from one read-only rpcd method, luci.slic status.
+  could not hook into PJSIP's full module table. "Accounts" lists, adds,
+  removes and re-keys the SIP extensions 200-299 through slic-accounts
+  (slic-fxs r7), without restarting Asterisk; showing or changing a password
+  needs LuCI write access. "Phone line" edits /etc/config/slic. Backend:
+  the rpcd ucode object luci.slic.
 endef
 
 define Build/Compile
@@ -37,6 +40,7 @@ endef
 define Package/luci-app-slic-fxs/install
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/slic
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/slic/status.js \
+		./htdocs/luci-static/resources/view/slic/accounts.js \
 		./htdocs/luci-static/resources/view/slic/line.js \
 		$(1)/www/luci-static/resources/view/slic/
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d

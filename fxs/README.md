@@ -1,7 +1,7 @@
 # fxs — RJ11 phone port for the ZLT S12 Pro on OpenWrt
 
 Brings the router's analog phone jack (Microchip Le9641 SLIC on the MT7621)
-back to life on OpenWrt 25.12.5: ring, dial tone, hook detection, audio clip
+back to life on OpenWrt 25.12 (25.12.5, now 25.12.6): ring, dial tone, hook detection, audio clip
 playback, caller ID, keypad dialling, and calls through an Asterisk PBX on
 the router (the phone becomes extension 100). **Read [docs/09-phone-port-fxs.md](../docs/09-phone-port-fxs.md)
 first**: it explains how the hardware works, how this was worked out, and the
@@ -14,13 +14,13 @@ the PBX is [11-pbx-asterisk.md](../docs/11-pbx-asterisk.md)
 |---|---|
 | `kmod-slic-mt7621/` | OpenWrt kernel package: `slic_spi_cs1` (SLIC on SPI CS1 → `/dev/spidev0.1`), `mt7621_pcm_raw` (PCM clock + `/dev/slicpcm`) |
 | `slicctl/` | SLIC control tool + `daemon` mode on Microsemi VP-API-II (`fetch-vpapi.sh` pulls the API) |
-| `luci-app-slic-fxs/` | Optional OpenWrt package: LuCI pages Services → Phone → **Status** (line, PBX, SIP phones, calls, problems) and **Phone line** (form over `/etc/config/slic`); backend `ubus call luci.slic status` ([doc 16](../docs/16-luci-phone-pages.md)) |
+| `luci-app-slic-fxs/` | Optional OpenWrt package: LuCI pages Services → Phone → **Status** (line, PBX, SIP phones, calls, problems), **Accounts** (SIP accounts via `slic-accounts`) and **Phone line** (form over `/etc/config/slic`); backend `ubus call luci.slic …` ([doc 16](../docs/16-luci-phone-pages.md)) |
 | `slic-fxs/` | OpenWrt package: slicctl, `/etc/init.d/slic` (late load + boot-loop failsafe), `/etc/config/slic`, slic-play |
 | `slicctl/cid.c` | Caller-ID generator: MDMF + Bell 202 / V.23 FSK, DTMF |
 | `slicctl/dtmf.c` | Keypad (DTMF) detector on the handset audio |
 | `slicctl/asock.c` | AudioSocket framing: the daemon's link to Asterisk |
 | `slic-fxs/files/slic-dial` | Dial hook: turns dialled digits into an Asterisk call file |
-| `asterisk/` | LAN-only PBX templates (`pjsip.conf`, `extensions.conf`, `rtp.conf`, `indications-lk.conf`) and `slic-asterisk-setup` |
+| `asterisk/` | LAN-only PBX templates (`pjsip.conf`, `extensions.conf`, `rtp.conf`, `indications-lk.conf`), `slic-asterisk-setup`, and `slic-accounts` (SIP accounts 200–299: list/show/add/reset/remove/sync without restarting Asterisk; used by the setup and the LuCI Accounts page) |
 | `tools/dtmf_test.py` | Offline DTMF detector test suite (`python3 tools/dtmf_test.py <host slicctl>`) |
 | `tools/audiosocket_demo.py` | Template AudioSocket app for extension 800 (beep + parrot, saves a .wav) |
 | `tools/sip_bot.py` | Template SIP application, stdlib only: logs in as an account, answers (beep + parrot, records, prints keys) or calls a number and plays a WAV |
@@ -35,7 +35,7 @@ the PBX is [11-pbx-asterisk.md](../docs/11-pbx-asterisk.md)
 Quick start:
 
 ```sh
-export SDK=/path/to/openwrt-sdk-25.12.5-ramips-mt7621_gcc-14.3.0_musl.Linux-x86_64
+export SDK=/path/to/openwrt-sdk-25.12.6-ramips-mt7621_gcc-14.3.0_musl.Linux-x86_64   # the release your router runs
 ./slicctl/fetch-vpapi.sh
 ./build.sh                     # ~10 min: also repackages all SDK kmods
 scp -O build/*.apk root@ROUTER:/tmp/

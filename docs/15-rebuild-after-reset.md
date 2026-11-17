@@ -130,7 +130,7 @@ names the ones that failed.
 ### Step 5 — your own builds
 
 ```sh
-for f in fxs/build/kmod-slic-spi-cs1-*.apk fxs/build/kmod-mt7621-pcm-raw-*.apk fxs/build/slic-fxs-*-r6.apk \
+for f in fxs/build/kmod-slic-spi-cs1-*.apk fxs/build/kmod-mt7621-pcm-raw-*.apk fxs/build/slic-fxs-*-r7.apk \
          fxs/build/luci-app-slic-fxs-*.apk; do
     /usr/bin/ssh $R "cat > /tmp/${f##*/}" < "$f"
 done
@@ -153,7 +153,7 @@ It does four things:
   resources), because the restored `ari.conf` has ARI enabled.
 - **Repairs** `/etc/asterisk` to mode 755, and creates the log and call-
   history folders.
-- **Keeps** the restored SIP passwords.
+- **Keeps** the restored SIP passwords (step 4 is `slic-accounts sync` since r7).
 - **Restarts** Asterisk and the phone daemon.
 
 If the call agent isn't wanted, use `--no-ari`. The setup also prints any

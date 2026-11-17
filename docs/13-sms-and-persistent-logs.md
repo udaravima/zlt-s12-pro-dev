@@ -146,6 +146,33 @@ messages from it while smsd is running.
 - **`incoming/` is never cleaned.** It holds about 250 bytes per message, so
   this isn't urgent, but nothing deletes old ones.
 
+**Update 2026-11-17 (checked live): since the 2026-11-05 rebuild, smsd
+shares a port with the LTE data link.**
+
+- The live `/etc/smsd.conf` says `device = /dev/ttyUSB4`, not the
+  `ttyUSB0` in §2.3. Nothing records why it changed.
+- `ttyUSB4` is also the wwan link's control port (`network.wwan.device`,
+  proto `ncm`). Today this works because of start order. At boot the
+  network (S20) dials wwan *before* smstools3 (S94) opens the port, and
+  wwan had stayed up since the last boot (3.4 days when checked).
+  **Not tested:** what happens if wwan re-dials while smsd holds the port.
+  Both programs would read the same replies, so the dial, an SMS read, or
+  both could fail.
+- smsd logs `GSM1: Unexpected input: +CREG: … +CEREG: …` whenever the modem
+  changes cell, because network-registration reports are switched on for
+  that port. It's harmless, but it made up **1,169 of 5,917 lines (20 %)**
+  of `/srv/log/messages` over 14–17 Nov, so it pushes useful lines out of
+  the 1 MiB persistent log sooner.
+- ModemManager (still `disabled`) lists three AT ports: `ttyUSB0`
+  (primary), `ttyUSB3` and `ttyUSB4`. So `ttyUSB0` is still an AT port on
+  25.12.6.
+- `sms_tool` isn't installed after the reset: it isn't in
+  `scripts/router-packages.txt`. The SIM check in §2.4 and §4 needs
+  `apk add sms-tool` first.
+
+The likely fix is to point smsd back at `ttyUSB0` (§2.3) and re-run §4's
+send and receive checks. It hasn't been done yet; see §5.
+
 ---
 
 ## 3. Logs that survive a reboot
@@ -304,6 +331,10 @@ creates the two folders itself. `/etc/smsd.conf` is now listed in
 - `Master.csv` and `incoming/` grow forever (a few hundred bytes per call or
   SMS).
 - ModemManager vs smsd (§2.5): fine while ModemManager stays disabled.
+- **smsd and wwan share `ttyUSB4`** (§2.5 update, 2026-11-17): move smsd
+  back to `ttyUSB0`, then test an SMS send and receive, plus
+  `ifdown wwan; ifup wwan` while smsd runs. Add `sms-tool` to the package
+  list.
 
 ## How obtained
 

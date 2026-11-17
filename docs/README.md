@@ -30,8 +30,8 @@ The project outgrew its original goal. Timeline of scope:
    package list, the PBX setup with ARI, then the firewall: one runbook
    (doc 15).
 11. **Phone pages in the web interface** — LuCI Services → Phone: a status
-   page for the line, the PBX, phones and calls, and a form for the line's
-   settings (doc 16).
+   page for the line, the PBX, phones and calls, SIP account management,
+   and a form for the line's settings (doc 16).
 
 ## Current state: rebuild runbook + package cleanup (2026-11-17)
 
@@ -39,13 +39,23 @@ The project outgrew its original goal. Timeline of scope:
   - **Status:** the line, the daemon, Asterisk, the SIP phones with where
     they registered from, active calls, HEP, and recent problems, with a
     warning when PJSIP's module table refuses a module.
+  - **Accounts:** the SIP logins: show a password on request; add, re-key or
+    remove one without restarting Asterisk. Uses `slic-accounts` (new in
+    `slic-fxs` r7), which `slic-asterisk-setup` now uses too.
   - **Phone line:** a form over `/etc/config/slic`.
-  - **Tested on the router:** the backend, the Save & Apply path and the
-    package build. **Not yet looked at in a browser.**
+  - **Tested on the router:** the backends, the Save & Apply path, the
+    account operations (on a throwaway extension), and every button offline.
+    **Not yet looked at in a browser.**
+  - **An outage I caused while testing (about 4 minutes):** rpcd's umask 077
+    made the regenerated accounts file unreadable to Asterisk, and
+    `#tryinclude` skipped it silently, so every SIP account vanished. Fixed
+    (explicit `chmod`) and retested. 202, the TCP phone, lost its
+    registration; it logged back in by itself and was seen again at 19:44
+    (doc 16 §4.2).
   - **A bug found on the way:** procd compares environments without the last
     4 bytes of each entry, so settings changes like dial timeout 3 → 4
     never restarted the daemon. `slic-fxs` r6 now restarts it explicitly on
-    every reload (doc 16 §4).
+    every reload (doc 16 §4.1).
 - **Live SIP view (hobby phase 0):** HEP is on. Asterisk copies every SIP
   message to `sngrep -L udp:0.0.0.0:9060` on the PC (`scripts/router_hep.sh`,
   doc 12 §7.1). The catch: OpenWrt's pjproject has only 32 PJSIP module
@@ -66,9 +76,15 @@ The project outgrew its original goal. Timeline of scope:
   test call played (doc 15 §4).
 - **`slic-asterisk-setup` (r6)** now installs the ARI group when `ari.conf`
   enables ARI. Before, a reset would have brought the PBX back without the
-  call agent's ARI. r6 is installed on the router since 2026-11-17, with
-  the reload fix (doc 16 §4); the r5 files are in
-  `/root/backups/slic-fxs-r5-20261117-160223.tgz`.
+  call agent's ARI. Installed on the router 2026-11-17: r6 (the reload
+  fix, doc 16 §4.1), then r7 (`slic-accounts`). Earlier files are in
+  `/root/backups/slic-fxs-r5-20261117-160223.tgz` and
+  `slic-fxs-r6-20261117-194339.tgz`.
+- **Found while checking the docs (not fixed yet):** since the 2026-11-05
+  rebuild, smsd uses `ttyUSB4`, the same modem port as the wwan data link.
+  It works only because wwan dials at boot before smsd starts. smsd's
+  "Unexpected input: +CREG" lines also made up 20 % of the persistent
+  system log. Doc 13 §2.5 has the details and the proposed fix.
 
 ## Current state: firewall check-up (2026-11-15)
 
@@ -94,7 +110,7 @@ The project outgrew its original goal. Timeline of scope:
 - **Rebuilt (doc 12 §8.1):** folder mode, the missing Asterisk packages,
   accounts 201–205 (new passwords), the `/srv/log/asterisk` folders, the ARI
   app's `Stasis()` routes. Files the backup skipped are now listed in
-  `/etc/sysupgrade.conf`. `slic-fxs` r6 (installed 2026-11-17) makes the
+  `/etc/sysupgrade.conf`. `slic-fxs` r6 and later (installed 2026-11-17) make the
   setup repair the folder and log paths itself.
 - **Verified:** Asterisk up, modules running (incl. `UnicastRTP`), an
   internal call to 601 played through, local-time call record. **Not yet
@@ -257,7 +273,7 @@ repositioning toward Mobitel LTE coverage.
 | `13-sms-and-persistent-logs.md` | SMS gateway (smstools3: SIM storage, init strings, send/receive) and moving logs, call history and SMS off RAM: what must stay in `/var`, system log to disk, Asterisk log dir + CDR + time zone; rebuild guide |
 | `14-firewall-security.md` | Firewall security check-up: who can reach the router (CGNAT, carrier network, LAN), every check and today's result, the boot-time duplicate `wwan` bug, the audit and provisioning scripts (what they change, safety rails, test mode) |
 | `15-rebuild-after-reset.md` | Factory reset → working router: why the order is extroot → backup → packages → own builds → PBX → firewall, the runbook with commands, what each script was tested with, the package list and the 2026-11-17 Asterisk cleanup |
-| `16-luci-phone-pages.md` | LuCI Services → Phone: what the status page and the line form show, where each value comes from, cost per refresh, security, the procd bug that kept settings from reaching the daemon, developing and testing |
+| `16-luci-phone-pages.md` | LuCI Services → Phone: what the status page, the SIP accounts page and the line form show, where each value comes from, cost per refresh, security, the procd bug that kept settings from reaching the daemon, developing and testing |
 | `debrief.md` | From-the-beginning briefing: status, stories, decisions, open items |
 
 ## Artifacts

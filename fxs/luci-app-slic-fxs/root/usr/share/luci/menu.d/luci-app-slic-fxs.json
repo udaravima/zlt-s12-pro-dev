@@ -21,6 +21,18 @@
 		}
 	},
 
+	"admin/services/slic/accounts": {
+		"title": "Accounts",
+		"order": 15,
+		"action": {
+			"type": "view",
+			"path": "slic/accounts"
+		},
+		"depends": {
+			"fs": { "/usr/sbin/slic-accounts": "executable" }
+		}
+	},
+
 	"admin/services/slic/line": {
 		"title": "Phone line",
 		"order": 20,

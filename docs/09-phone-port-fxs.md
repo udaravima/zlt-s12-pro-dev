@@ -164,6 +164,10 @@ All code is in [`fxs/`](../fxs). It needs the official OpenWrt SDK for
 "vermagic" string exactly (`6.12.94 SMP mod_unload MIPS32_R2 32BIT`), and the
 SDK builds against the exact same kernel.
 
+*Update 2026-11-17:* the router now runs OpenWrt 25.12.6 (kernel 6.12.112),
+and the packages are built with the 25.12.6 SDK. The rule hasn't changed:
+use the SDK of the exact release the router runs (doc 15, step 5).
+
 ### 4.1 `slic_spi_cs1.ko`: making the SLIC visible
 
 OpenWrt's device tree for this router only declares the flash on SPI. The
@@ -369,6 +373,9 @@ the installed service (§10).
 ## 7. How to reproduce
 
 ### 7.1 Build (on a Linux PC)
+
+*Update 2026-11-17:* for a router on 25.12.6, change `25.12.5` to `25.12.6`
+in the three SDK lines below.
 
 ```sh
 # once: OpenWrt SDK (225 MB) — verify against the release sha256sums

@@ -160,7 +160,7 @@ The daemon reads these only at start (as environment variables from the init
 script). Since `slic-fxs` r6, `/etc/init.d/slic reload` (which a `uci`
 change through LuCI triggers) restarts it. Before r6, procd decided whether
 to restart, and missed changes hidden in the last 4 bytes of an environment
-entry (doc 16 §4). `clk_switch` and `spi_hz` are module parameters: they
+entry (doc 16 §4.1). `clk_switch` and `spi_hz` are module parameters: they
 change only at the next module load, in practice the next boot. LuCI form:
 doc 16 §1.3.
 

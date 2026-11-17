@@ -103,6 +103,10 @@ app address and your own files, and saves any config file it replaces as
 **Two log traps:** Asterisk's log timestamps are **UTC** (this OpenWrt has no
 time-zone data for Asterisk; `logread` shows local time), and
 `/var/log` lives in RAM, so the Asterisk log is gone after a reboot.
+Doc 13 §3.3 fixes both: `apk add zoneinfo-asia` (Asterisk reads
+`/etc/localtime`) and `astlogdir => /srv/log/asterisk`. *Update
+2026-11-17:* this router has both fixes, so its log is
+`/srv/log/asterisk/messages.log`, stamped in local time.
 
 Ring the handset with a test caller ID and connect the answer to the echo
 test (pick up, hear yourself):
@@ -127,8 +131,9 @@ the router's web interface shows most of the table above on one page:
 - the calls in progress;
 - recent problems from Asterisk's log.
 
-The **Phone line** tab edits `/etc/config/slic` (§4.3). The pages can't
-change accounts or the dialplan yet: those still need SSH. Doc 16 has every
+The **Accounts** tab lists the SIP logins, shows a password on request,
+and adds, re-keys or removes one (§4.2). The **Phone line** tab edits
+`/etc/config/slic` (§4.3). The dialplan still needs SSH. Doc 16 has every
 field, where each value comes from, and what a refresh costs the router.
 
 ---
@@ -167,21 +172,33 @@ backup will contain.
 ### 4.2 SIP logins (accounts)
 
 Logins are numbers from **200 to 299** (the dialplan routes `2XX` to them).
+Since `slic-fxs` r7, one command manages them, without restarting Asterisk:
+calls in progress carry on, and a new login works at once. It is the same
+code the setup and the LuCI page use.
 
 ```sh
-# show one account's password
-grep -A3 '201-auth' /etc/asterisk/pjsip_secrets.conf
-
-# add accounts 204 and 205 (new random passwords; others unchanged)
-ACCOUNTS="204 205" slic-asterisk-setup --no-apk
-
-# remove 205: delete its block, then re-run
-vi /etc/asterisk/pjsip_secrets.conf      # delete [205-auth] … password=… lines
-slic-asterisk-setup --no-apk
+slic-accounts list            # the extensions (no passwords)
+slic-accounts show 201        # one account's password
+slic-accounts add 206         # new account, random 20-character password (printed)
+slic-accounts reset 202       # new password for 202 (printed); the phone must be updated
+slic-accounts remove 205      # delete 205: its phone is logged out, calls to 205 fail
 
 # new passwords for everyone (every device must be updated!)
 slic-asterisk-setup --no-apk --new-passwords
 ```
+
+Or in the browser: **Services → Phone → Accounts** (doc 16 §1.4). Before
+r7, adding meant `ACCOUNTS="204 205" slic-asterisk-setup --no-apk` (that
+still works) and removing meant editing `pjsip_secrets.conf`; both
+restarted Asterisk.
+
+**Don't edit the two account files by hand.** `pjsip.conf` pulls them in
+with `#tryinclude`, which **silently skips a file Asterisk can't read**. A
+`pjsip_accounts.conf` that isn't world-readable (it's owned by root, and
+Asterisk runs as `asterisk`) unloads *every* account at the next reload,
+with no error. That happened once during development (doc 16 §4.2).
+`slic-accounts` sets both modes itself: 0644 for the accounts, 0600 and
+owner `asterisk` for the secrets.
 
 Each login allows **2 devices at once** (`max_contacts=2`), e.g. a phone
 and a laptop with the same account; both ring. Caller ID for an account is

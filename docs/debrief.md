@@ -30,7 +30,8 @@ Scope grew in seven phases, each documented in its own doc:
 
 ## The two machines, in one paragraph each
 
-**Router**: MT7621, OpenWrt 25.12.5 (apk, no opkg), 16 MB flash with a
+**Router**: MT7621, OpenWrt 25.12.5 (25.12.6 since the late-October reset,
+see below; apk, no opkg), 16 MB flash with a
 3.6 MB overlay that's 90% full, 121 MB tmpfs, 248 MB RAM. Primary WAN is
 PPPoE over SLT fibre (VLAN 20). Runs adbd at boot so we can reach the
 modem. Busybox is old: nc can't listen, no timeout command.
@@ -226,10 +227,11 @@ an Asterisk restart. The previous `world` and installed list are in
    passthrough), then reboot once to check the guard.
 4b. **Rebuild runbook** (doc 15): every script is tested on its own; run
    the whole sequence once for real, and take a fresh LuCI backup.
-   (`slic-fxs` r6 is installed since 2026-11-17.)
-4c. **LuCI phone pages** (doc 16): installed; backend and Save & Apply
-   path tested on the router. Look at both tabs in a browser and Save &
-   Apply one change.
+   (`slic-fxs` r7 is installed since 2026-11-17.)
+4c. **LuCI phone pages** (doc 16): installed (Status, Accounts, Phone
+   line); backends, Save & Apply and account operations tested on the
+   router. Look at all three tabs in a browser, Save & Apply one change,
+   add and remove an extension.
 5. **Persist the usb2 management link** (uci on router + adb-side modem
    setup at boot).
 6. **Cross-toolchain** (armv7, static musl or glibc ≥ 2.27) → tiny static

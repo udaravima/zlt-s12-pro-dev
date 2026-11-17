@@ -1,12 +1,16 @@
-# 16 — Phone pages in LuCI: status and line settings
+# 16 — Phone pages in LuCI: status, accounts and line settings
 
-The router's web interface (LuCI) gains a **Services → Phone** menu with two
-tabs:
+The router's web interface (LuCI) gains a **Services → Phone** menu with
+three tabs:
 
 - **Status** (read-only): the RJ11 phone line, and the Asterisk PBX if one is
   installed. It shows the SIP phones and where they registered from, active
   calls, HEP capture, and recent problems from Asterisk's log. It also raises
   a warning when a module can't hook into Asterisk's SIP stack.
+- **Accounts**: the SIP logins (extensions 200–299). It lists them, shows a
+  password on request, and adds, re-keys or removes one, without restarting
+  Asterisk. It uses `slic-accounts` (`slic-fxs` r7), the same code
+  `slic-asterisk-setup` uses.
 - **Phone line**: a form over `/etc/config/slic`, the line daemon's settings.
 
 The package is `luci-app-slic-fxs`, in [`fxs/luci-app-slic-fxs/`](../fxs/luci-app-slic-fxs).
@@ -14,13 +18,20 @@ It is architecture-independent (JavaScript, JSON and one `ucode` script, no
 compiled code), and needs nothing the router doesn't already run: LuCI,
 rpcd and `ucode`.
 
-Written 2026-11-17. **The backend and the Save & Apply path were tested on the
-router; the pages themselves have not yet been looked at in a browser** (§7).
+Written 2026-11-17. **The backends, the Save & Apply path and the account
+operations were tested on the router, and every page's buttons offline; the
+pages have not yet been looked at in a browser** (§7).
 
-Building this turned up a bug that predates it: **a settings change often
-never reached the phone line daemon.** procd compares a service's
-environment without the last 4 bytes of each entry, so it missed changes such
-as dial timeout 3 → 4. `slic-fxs` r6 restarts the daemon explicitly (§4).
+Building this turned up two traps (§4):
+- **A settings change often never reached the phone line daemon.** procd
+  compares a service's environment without the last 4 bytes of each entry,
+  so it missed changes such as dial timeout 3 → 4. `slic-fxs` r6 restarts
+  the daemon explicitly.
+- **An account change made from LuCI unloaded every SIP account.** rpcd
+  runs its helpers with umask 077, so the regenerated accounts file became
+  unreadable to Asterisk, and `#tryinclude` skips such a file without a
+  word. This happened live for about 4 minutes during testing; it's fixed,
+  and the fix is tested.
 
 ---
 
@@ -36,7 +47,7 @@ Refreshes every 10 s while open (LuCI's refresh indicator pauses it).
 | | Line | idle, dial tone, dialling, ringing, in a call, busy tone | `/var/run/slic.state` (doc 10 §3.2) |
 | | Handset | lifted or on hook | same file, `hook=` |
 | | Current or last call | ringing, answered, connecting, connected, ended, busy | `/var/run/slic.call` |
-| | Caller ID format, Dial timeout | the values the daemon **is running with** | the daemon's own environment, `/proc/<pid>/environ` (not procd's record: §4) |
+| | Caller ID format, Dial timeout | the values the daemon **is running with** | the daemon's own environment, `/proc/<pid>/environ` (not procd's record: §4.1) |
 | | Kernel modules | loaded, or which is missing | `/proc/modules` |
 | | Recent line events | the last 8 lines from the daemon and the init script | `logread` (tags `slicctl`, `slic`) |
 | PBX | Asterisk | running (version, PID) or not | `/var/run/asterisk/asterisk.pid` + `/proc/<pid>/comm`; version from `asterisk -V` once per start |
@@ -73,13 +84,47 @@ Refreshes every 10 s while open (LuCI's refresh indicator pauses it).
 Save & Apply restarts the daemon (about 2 s), which **cuts off a call in
 progress**. An empty field means "use the default".
 
+### 1.4 Accounts
+
+The tab appears only when `/usr/sbin/slic-accounts` exists (`slic-fxs` r7 or
+later).
+
+| Part | What it does | Behind it |
+|---|---|---|
+| Where phones connect | the SIP server address, port and transports, what a phone's username is, and that it's LAN-only | the `type=transport` sections of `pjsip.conf` |
+| Extensions table | one row per account: number, where its phone is logged in from | `slic-accounts list`, plus the status data (`pjsip show endpoints`) |
+| **Show** | fetches that one password and shows it in the row; **Hide** takes it away again | `slic-accounts show EXT` |
+| **New password** | after a confirmation, a new random password, shown in a dialog with everything a phone needs | `slic-accounts reset EXT` |
+| **Remove** | after a confirmation, deletes the account | `slic-accounts remove EXT` |
+| **Add** | the number typed (default: the lowest free one from 201) gets an account; the dialog shows its password | `slic-accounts add EXT` |
+
+**What a change does:** `slic-accounts` rewrites `pjsip_secrets.conf` and
+`pjsip_accounts.conf`, then sends Asterisk `module reload res_pjsip.so`.
+Measured on the router:
+- a new account works at once;
+- the phones already registered (201 and 204, both UDP) stayed registered
+  and reachable through every reload;
+- calls in progress carry on.
+
+After **New password**, the phone keeps its current registration until it
+renews it, and that renewal is refused until the phone has the new
+password. After **Remove**, calls to that number fail.
+
+Passwords are 20 random letters and digits, the same rule as
+`slic-asterisk-setup`. Extension 100, the RJ11 phone, is not a SIP account
+and isn't listed.
+
 ---
 
 ## 2. Install, update, remove
 
-The pages need `slic-fxs` **r6 or later**: with r5, many settings changes are
-saved but never reach the daemon (§4). The status page still tells the
-truth in that case: it shows the "settings differ" notice.
+The pages need `slic-fxs` **r7 or later**:
+- **r7 or later:** everything, including the Accounts tab (it brings
+  `slic-accounts`).
+- **r6:** the Accounts tab is hidden.
+- **r5:** many settings changes are also saved without ever reaching the
+  daemon (§4.1). The status page still tells the truth then: it shows the
+  "settings differ" notice.
 
 ```sh
 # build (with the rest of fxs/, doc 09 §10): fxs/build/luci-app-slic-fxs-*.apk
@@ -104,17 +149,21 @@ router side, which has LuCI anyway.
 ## 3. How it works
 
 ```
-browser ── LuCI (view/slic/status.js, line.js) ──► rpcd (session + ACL)
-                                                    │
-        status page: ubus luci.slic status ─────────┤──► /usr/share/rpcd/ucode/luci.slic
-                                                    │      reads: state/call files, /proc, procd,
-                                                    │      logread, Asterisk log, hep.conf,
-                                                    │      asterisk -rx (2 commands)
-        form: uci set/commit (Save & Apply) ────────┘──► /etc/config/slic
-                                                           │ config.change event
-                                                           ▼
-                                                 procd ── /etc/init.d/slic reload
-                                                           = stop + start (§4)
+browser ── LuCI (view/slic/status.js, accounts.js, line.js) ──► rpcd (session + ACL)
+                                                                 │
+   status page: ubus luci.slic status ───────────────────────────┤──► /usr/share/rpcd/ucode/luci.slic
+                                                                 │      reads: state/call files, /proc, procd,
+                                                                 │      logread, Asterisk log, hep.conf,
+                                                                 │      asterisk -rx (2 commands)
+   accounts: luci.slic accounts / account_* ─────────────────────┤──► /usr/sbin/slic-accounts
+                                                                 │      writes pjsip_secrets.conf (0600)
+                                                                 │      + pjsip_accounts.conf (0644),
+                                                                 │      then asterisk: module reload res_pjsip.so
+   form: uci set/commit (Save & Apply) ──────────────────────────┘──► /etc/config/slic
+                                                                        │ config.change event
+                                                                        ▼
+                                                              procd ── /etc/init.d/slic reload
+                                                                        = stop + start (§4.1)
 ```
 
 **Files of the package:**
@@ -122,10 +171,12 @@ browser ── LuCI (view/slic/status.js, line.js) ──► rpcd (session + ACL
 | File | Role |
 |---|---|
 | `/www/luci-static/resources/view/slic/status.js` | the status page (renders in the browser) |
+| `/www/luci-static/resources/view/slic/accounts.js` | the Accounts page |
 | `/www/luci-static/resources/view/slic/line.js` | the form (`form.Map` over `slic`) |
-| `/usr/share/luci/menu.d/luci-app-slic-fxs.json` | menu entry; shown only with the ACL and when `/etc/config/slic` exists |
-| `/usr/share/rpcd/acl.d/luci-app-slic-fxs.json` | access: `luci.slic status`, read/write of the `slic` config. Nothing else |
-| `/usr/share/rpcd/ucode/luci.slic` | the backend: one method, `status`, no arguments |
+| `/usr/share/luci/menu.d/luci-app-slic-fxs.json` | menu entries; Phone only with the ACL and when `/etc/config/slic` exists, Accounts only when `slic-accounts` is installed |
+| `/usr/share/rpcd/acl.d/luci-app-slic-fxs.json` | **read:** `status`, `accounts` (numbers, no passwords), the `slic` config. **write:** `account_password`, `account_add`, `account_reset`, `account_remove`, the `slic` config |
+| `/usr/share/rpcd/ucode/luci.slic` | the backend: `status` and `accounts` take no arguments; the four `account_*` take `ext` |
+| `/usr/sbin/slic-accounts` | *(in `slic-fxs` r7)*: the one writer of the account files, shared with `slic-asterisk-setup` |
 
 **Cost to the router, measured on the MT7621 (880 MHz):**
 - **Each refresh: 0.42 s.** Almost all of it is the two `asterisk -rx` calls
@@ -144,13 +195,24 @@ reads:
 
 **Security:**
 - **Access:** the pages sit behind LuCI's login, served by nginx on the LAN
-  only (doc 14). The access group allows one read-only method and the `slic`
-  config, nothing else.
-- **The backend accepts no input:** every command it runs is a constant
-  string.
-- **Secrets:** it never opens `pjsip_secrets.conf` or `ari.conf`, so no
-  password can reach the browser. Log lines can contain phone numbers and LAN
-  addresses, which is normal for an admin page.
+  only (doc 14).
+  - **Passwords need write access.** A LuCI user with only read access can
+    see the status and the list of extensions, but not one password: `show`
+    is in the `write` half of the ACL, alongside add, reset and remove. Root
+    has both.
+- **Input:** the only input the backend takes is an extension. It must match
+  `^2[0-9][0-9]$` in the backend, and again in `slic-accounts`, before it
+  goes near a command line. `"201;id"`, `"20 6"`, `"300"` and `""` were all
+  refused on the router. Every other command is a constant string.
+- **Secrets:**
+  - **Where passwords travel:** they leave the router only when asked for
+    (Show, or the dialog after Add/New password), through LuCI's own HTTPS
+    session. The status page never opens `pjsip_secrets.conf` or `ari.conf`.
+  - **They stay off the screen otherwise:** `slic-accounts` prints a
+    password only for `show`, `add` and `reset`. Every other command prints
+    nothing; this was tested after a bug that printed them all (§7).
+  - **Log lines** can contain phone numbers and LAN addresses, which is
+    normal for an admin page.
 - **No markup from data (stored XSS).** Much of what the page shows comes
   from outside:
   - caller IDs and contact URIs;
@@ -161,13 +223,15 @@ reads:
   (`innerHTML`); only strings inside an *array* become text. One bare string
   would let any device on the LAN send a SIP request whose `From` header
   then runs as script in an administrator's LuCI session, which is root.
-  So `status.js` passes every child in an array. The first draft didn't,
-  and an automated security review caught it before release; §7 has the
-  test that proves the fix.
+  So `status.js` and `accounts.js` pass every child in an array. The first
+  draft didn't, and an automated security review caught it before release;
+  §7 has the test that proves the fix.
 
 ---
 
-## 4. The bug found on the way: settings that never reached the daemon
+## 4. Two traps found on the way
+
+### 4.1 Settings that never reached the daemon (procd)
 
 **Symptom:** change the dial timeout from 3 to 4 and Save & Apply (or
 `uci commit slic` + `/etc/init.d/slic reload`). procd's record of the
@@ -207,6 +271,52 @@ received.
 
 **Upstream:** worth reporting to procd. The fix is to compare `blob_data()` of
 both attributes, or `blob_raw_len()` bytes from the header. Not filed yet.
+
+### 4.2 An account change that unloaded every account (rpcd's umask)
+
+**What happened (2026-11-17, 19:20:49 to about 19:24).** The first live test
+of the Accounts backend added extension 206 through `ubus call luci.slic
+account_add`. The files were written and Asterisk reloaded, and then
+**Asterisk had no SIP accounts at all**:
+- `pjsip show endpoints` was empty;
+- `pjsip show aor 201` said "Unable to find object";
+- the five accounts were still on disk.
+
+The phones looked registered only because their old registrations lingered.
+A call to or from them would have failed. Nothing was logged as an error.
+
+**The chain:**
+1. rpcd runs with **umask 0077** (`/proc/<pid>/status`), and the commands
+   it starts inherit it.
+2. `slic-accounts` wrote `pjsip_accounts.conf` with a plain shell
+   redirect, so the file came out **0600, owned by root**. From an SSH shell
+   (umask 022) the same command gives 0644, which is why the first tests
+   passed.
+3. Asterisk runs as user `asterisk`. `pjsip.conf` pulls the file in with
+   `#tryinclude`, which **silently skips a file it can't read**, so the
+   reload defined no endpoints or AORs.
+
+**The fix:** `slic-accounts` sets the mode explicitly (`chmod 0644` before
+the file replaces the old one), whoever runs it. The secrets file was never
+affected: it was already set to 0600 and chowned to `asterisk` explicitly.
+**Recovery on the router:** `chmod 0644` and one reload brought all five
+endpoints back.
+
+**Retested through the LuCI backend.** The endpoint count after each step
+was exactly right (5 → add 6 → reset 6 → remove 5). The file stayed 0644.
+201 and 204 stayed registered and reachable through every reload, and the
+other passwords were unchanged.
+
+**One side effect: 202 dropped off.** It's the one phone on TCP, and its
+registration lives on its TCP connection. When the account vanished, its
+registration went with it, while the UDP phones' registrations survived. It
+came back when the phone logged in again on its own: by 19:44 it was
+registered again on a new TCP port and answering checks.
+
+**The warning sign I misread:** right after the first add, a check said
+"206 in Asterisk: 0", and I took it for a test-script mistake. **Lesson:**
+when a change to `pjsip.conf` or its includes is followed by a reload,
+check that the endpoint count is what you expect. Asterisk won't complain.
 
 ---
 
@@ -288,11 +398,15 @@ back one bare string makes it fail. Run it after every change to
 | Active calls | a call file connecting a `Local` channel to the 600 echo test (nothing rings) | both channels listed: state, application, caller ID, duration, field for field as the raw output |
 | Cost | `time ubus call …` ×3 | 1.9 s, then 0.44 s and 0.42 s |
 | "Settings differ" detection | `uci commit` without reload | config 4, applied 3 |
-| Save & Apply path | `uci commit` + the `config.change` event that rpcd sends | before the fix: no restart (§4). After: restart, new values in the daemon's environment |
+| Save & Apply path | `uci commit` + the `config.change` event that rpcd sends | before the fix: no restart (§4.1). After: restart, new values in the daemon's environment |
 | Enabled off/on | same path | daemon stopped at once, both modules stayed loaded; back on: running |
 | JavaScript | parsed (`node`), served from the router | parses |
 | Status page, rendered offline | `status.js` run in Node with a strict stand-in for LuCI's `E()`, fed the router's live status JSON plus attack strings (`<img src=x onerror=…>`) in caller ID, contact URI, endpoint name, channel, log lines and line events | page text as expected; **no string ever reached `E()` as a bare child**, so all 7 hostile strings stayed plain text (§3, security) |
-| **The pages in a browser** | **not yet** | to do: open Services → Phone, check both tabs, and Save & Apply a change |
+| `slic-accounts` on the router's BusyBox, scratch folder with made-up passwords | list, show, add, reset, remove, sync (none, one, `--new-passwords`), fresh install; numbers `300`, `199`, `abc`, `20; touch /tmp/pwned`, `""`, `2000`, `2*`, `201 202`; two adds at the same moment; file modes and owner; **what each command prints** | all as designed: errors name the problem, no injection, the lock keeps both concurrent adds, secrets 0600 `asterisk`. Output: nothing, except one password from add/reset. Two bugs found on the way, both fixed: BusyBox `sort` has no `-o`/`-k` and printed every password instead; and the new password was printed empty, overwritten by a loop variable |
+| `slic-accounts sync` against the setup's old step 4 | the same made-up accounts through both | accounts file byte-identical; secrets identical apart from the 2 comment lines |
+| Account operations live, through the LuCI backend | throwaway extension 206: add, show, reset, remove, with the endpoint count checked after each step and a backup restored automatically if wrong | 5 → 6 → 6 → 5; 206 live in Asterisk after add; 201–205 passwords unchanged (fingerprints); 201 and 204 stayed registered. The first run caused the outage in §4.2 |
+| Accounts page, offline | `accounts.js` in the same Node harness, buttons clicked: Show/Hide, New password (via its dialog), Remove (via its dialog), Add `300` (refused), Add (suggested number) | backend calls exactly `account_password 201`, `account_reset 201`, `account_remove 201`, `account_add 206`; the password is shown, then hidden. **The harness fails on a button with no handler:** with the original method name `handleReset` (which a LuCI view uses itself, so the method was overwritten by `null`), the test fails |
+| **The pages in a browser** | **not yet** | to do: open Services → Phone, check all three tabs, Save & Apply a line change, and add then remove an extension |
 | Package | built with the SDK (`fxs/build.sh`, exit 0): the 5 packaged files are byte-identical to the repo; `apk` records the dependencies (`luci-base`, `rpcd-mod-ucode`, `slic-fxs`, three `ucode` modules) despite the SDK's "does not exist" warnings | — |
 | Install | `apk add --allow-untrusted` of `slic-fxs` r6 and `luci-app-slic-fxs` r1 on the router (r5 files backed up first) | files owned by the packages; backend answers; a reload through the packaged init applied 3 → 4 and back |
 
@@ -300,9 +414,7 @@ back one bare string makes it fail. Run it after every change to
 
 ## 8. Next pages
 
-From the plan in order of usefulness:
-- **Accounts:** add an extension, reset a password, show it once for setting up
-  a phone. It must reuse `slic-asterisk-setup`'s code, not copy it.
+From the plan in order of usefulness (Accounts: done, §1.4):
 - **Call history:** `Master.csv`.
 - **SMS:** smstools3's spool.
 - **A HEP on/off switch:** `scripts/router_hep.sh`'s logic.

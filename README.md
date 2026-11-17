@@ -1,7 +1,8 @@
 # ZLT S12 Pro: developer notes for OpenWrt
 
 Hands-on research on the Tozed **ZLT S12 Pro** LTE router (board name
-`s12-unisoc-plus`) running **OpenWrt 25.12.5**. Inside are two computers:
+`s12-unisoc-plus`) running **OpenWrt 25.12** (developed on 25.12.5, on
+25.12.6 since October 2026). Inside are two computers:
 
 - a **MediaTek MT7621** router SoC running OpenWrt, and
 - a **Unisoc SL8563** LTE modem on USB, running its **own Linux** (root shell
@@ -23,7 +24,7 @@ reproduce it. Each document has a "How obtained" section with the commands.
 | SMS gateway + persistent logs | smstools3 sends and receives SMS; SMS, system log and Asterisk call history kept across reboots | [13](docs/13-sms-and-persistent-logs.md) |
 | Firewall check-up | Read-only audit + idempotent provisioning scripts (firewall4, SSH, nginx); a stock board script that duplicates `wwan` in the WAN zone on every boot | [14](docs/14-firewall-security.md), [`scripts/`](scripts) |
 | Rebuild after a factory reset | Extroot attach (never formats), package snapshot/restore, PBX and firewall: one ordered runbook | [15](docs/15-rebuild-after-reset.md), [`scripts/`](scripts) |
-| **Phone pages in LuCI** | Services → Phone: live status of the line, the PBX, SIP phones and calls, plus a form for the line's settings; and a procd bug (environment compared without its last 4 bytes) that kept settings from reaching the daemon | [16](docs/16-luci-phone-pages.md), [`fxs/luci-app-slic-fxs/`](fxs/luci-app-slic-fxs) |
+| **Phone pages in LuCI** | Services → Phone: live status of the line, the PBX, SIP phones and calls; SIP accounts (add, re-key, remove without restarting Asterisk); a form for the line's settings; and a procd bug (environment compared without its last 4 bytes) that kept settings from reaching the daemon | [16](docs/16-luci-phone-pages.md), [`fxs/luci-app-slic-fxs/`](fxs/luci-app-slic-fxs) |
 
 ## Documents
 
@@ -45,17 +46,19 @@ reproduce it. Each document has a "How obtained" section with the commands.
 | [13-sms-and-persistent-logs](docs/13-sms-and-persistent-logs.md) | SMS gateway with smstools3 (SIM storage, init strings, send/receive) and keeping SMS, logs and call history off RAM; rebuild guide |
 | [14-firewall-security](docs/14-firewall-security.md) | Firewall security check-up: exposure model, every check explained, the boot-time duplicate `wwan` bug, audit and provisioning scripts |
 | [15-rebuild-after-reset](docs/15-rebuild-after-reset.md) | Factory reset → working router: extroot, LuCI backup, package list, own builds, PBX, firewall, in that order and why |
-| [16-luci-phone-pages](docs/16-luci-phone-pages.md) | LuCI pages for the phone: status and line settings, data sources, cost, security, the procd environment-compare bug, how to develop and test |
+| [16-luci-phone-pages](docs/16-luci-phone-pages.md) | LuCI pages for the phone: status, SIP accounts and line settings, data sources, cost, security, the procd environment-compare bug, how to develop and test |
 | [debrief](docs/debrief.md) | From-the-beginning briefing |
 
 ## Phone port quick start
 
-Needs the OpenWrt **SDK for 25.12.5 ramips/mt7621**. No stock firmware
+Needs the OpenWrt **SDK (ramips/mt7621) of the exact release your router
+runs**, because the kernel modules must match its kernel. Tested on 25.12.5
+and 25.12.6. No stock firmware
 dump is needed: the board's device profile is in `fxs/slicctl/board_profile.c`
 and the rest comes from VP-API's defaults (doc 09 §7.1).
 
 ```sh
-export SDK=/path/to/openwrt-sdk-25.12.5-ramips-mt7621_gcc-14.3.0_musl.Linux-x86_64
+export SDK=/path/to/openwrt-sdk-25.12.6-ramips-mt7621_gcc-14.3.0_musl.Linux-x86_64
 cd fxs
 ./slicctl/fetch-vpapi.sh
 ./build.sh                                     # -> fxs/build/*.apk (~10 min)
