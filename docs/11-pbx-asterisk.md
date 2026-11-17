@@ -612,6 +612,7 @@ RJ11 phone.
 | A LuCI backup restored **before** Asterisk is installed (2026-11-05) | Asterisk exits at every start: `'modules.conf' invalid or missing`, `Module initialization failed` | the restore created `/etc/asterisk` as `0700`; Asterisk reads `asterisk.conf` as root, then switches to user `asterisk` and can't enter the folder. `chmod 755 /etc/asterisk`; the setup does it since `slic-fxs` r6 (doc 12 §8.1) |
 | "The LuCI backup has my PBX" (2026-11-05) | after a factory reset: no SIP accounts, no own numbers | the backup holds only package config files. List `pjsip_accounts.conf`, `pjsip_secrets.conf` and both `*_local.conf` in `/etc/sysupgrade.conf` (doc 12 §8) |
 | `cdr_csv` with a custom `astlogdir` | `Master.csv` never appears | it doesn't create `cdr-csv/`, and the init script only creates `/var/log/asterisk/cdr-csv`. The setup creates it since r6 |
+| `res_hep_pjsip` shows `Running` (2026-11-17) | HEP enabled, but nothing leaves the router; sngrep stays empty | OpenWrt's pjproject keeps the stock limit of 32 PJSIP modules (Asterisk's bundled copy: 38), and this setup fills all 32. The module loads but can't register; the only sign is `Unable to register module HEPv3 Logging Module` in the log. `scripts/router_hep.sh` gives it `res_pjsip_history`'s slot (doc 12 §7.1) |
 
 ---
 
@@ -647,6 +648,7 @@ trunk is just another place a call can come from.
 | Long-call clock drift | the 100 ms cap would start dropping frames | log `frames dropped` on a 10-minute call |
 | Hook flash | could give transfer / call waiting | not handled; the daemon sees it as a short on-hook |
 | Bell cadence | the phone rings 2 s on / 4 s off (US style); Sri Lanka uses a double ring | change the daemon's cadence, re-test caller ID timing |
+| PJSIP module table full (32 of 32 since HEP, 2026-11-17) | the next module that hooks into SIP fails silently, and after a restart the loser may be an important one | check the log after adding SIP modules (doc 12 §7.1); report to OpenWrt telephony that their pjproject `config_site.h` lacks `PJSIP_MAX_MODULE` (Asterisk uses 38) |
 
 ## How obtained
 

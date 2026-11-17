@@ -9,6 +9,7 @@ packages back". It ties together scripts written separately:
 | Packages added on top of the firmware | [`scripts/router_packages.sh`](../scripts/router_packages.sh) + [`scripts/router-packages.txt`](../scripts/router-packages.txt) | this doc |
 | PBX: Asterisk modules, configs, accounts | `slic-asterisk-setup` (in `slic-fxs`) | 12 §8.1 |
 | Firewall, SSH, nginx hardening | [`scripts/router_fw_provision.sh`](../scripts/router_fw_provision.sh), then the audit | 14 |
+| Optional: live SIP capture to sngrep (HEP) | [`scripts/router_hep.sh`](../scripts/router_hep.sh) | 12 §7.1 |
 
 Written 2026-11-17. **Each script was tested on the live router or on
 stand-in folders, but the full sequence has not been run end to end**,
@@ -158,6 +159,13 @@ Asterisk package installed by hand that it doesn't use.
 Logs, call history and the time zone come back with the backup
 (`asterisk.conf`, `/etc/config/system`); doc 13 §3.5 has the checks.
 
+HEP capture (doc 12 §7.1) also comes back with the backup, if the backup
+was taken after HEP was switched on: `modules.conf` and `hep.conf` are in it
+from then on. The package install keeps restored config files (it kept
+`ari.conf` on 2026-11-05). Check with
+`/usr/bin/ssh $R 'sh -s' < scripts/router_hep.sh`. If it's off, or the PC's
+address has changed, run `... 'sh -s -- on <pc-ip>:9060' < scripts/router_hep.sh`.
+
 ### Step 7 — firewall
 
 ```sh
@@ -186,6 +194,7 @@ switches SSH to key-only (doc 14 §4.2).
 | `router_packages.sh` | `snapshot` live (126 packages + 3 local); `check` live (0 missing, after fixing names provided by another package, e.g. `hostapd`); the `restore` failure path with a fake name (named it, `world` stayed clean) | a full `restore` onto an empty router |
 | `slic-asterisk-setup` r6 | syntax; ARI group and leftover-package note: see doc 12 §8.1 | install from the r6 package |
 | `router_fw_provision.sh` | doc 14 §4.3 | live `--apply` |
+| `router_hep.sh` | on copies of the two files: a second `on` changes nothing; `off` restores `modules.conf` byte for byte; your own `noload` of `res_pjsip_history` is kept; an unexpected `hep.conf` layout → both files restored; owner and mode kept. Live: `on`, then an Asterisk restart (doc 12 §7.1) | a router reboot; coming back through a backup restore |
 
 The stand-in run for `router_extroot.sh`, on the router:
 
@@ -231,8 +240,8 @@ call to 601 played to the end. Before-state:
 1. Run the whole sequence once for real: the next reset or a spare router.
 2. Install `slic-fxs` r6 on the live router. It's only needed for the reset
    path, which installs it from `fxs/build` anyway.
-3. Take a fresh LuCI backup now: the last one predates the prune and the
-   firewall work.
+3. Take a fresh LuCI backup now: the last one predates the prune, the
+   firewall work and HEP.
 
 ## How obtained
 

@@ -32,6 +32,13 @@ The project outgrew its original goal. Timeline of scope:
 
 ## Current state: rebuild runbook + package cleanup (2026-11-17)
 
+- **Live SIP view (hobby phase 0):** HEP is on. Asterisk copies every SIP
+  message to `sngrep -L udp:0.0.0.0:9060` on the PC (`scripts/router_hep.sh`,
+  doc 12 §7.1). The catch: OpenWrt's pjproject has only 32 PJSIP module
+  slots, all already in use. HEP showed `Running` while capturing nothing
+  until `res_pjsip_history` gave up its slot. **No slots are spare now.**
+  Verified across an Asterisk restart, and on the PC with softphones 201
+  and 204 registering (both now have their new passwords).
 - **`scripts/router_extroot.sh`**: status, and attach (never formats; an old
   overlay on the stick is archived, not deleted). **`scripts/router_packages.sh`**:
   snapshot, check and restore of the 126 packages added on top of the
@@ -230,7 +237,7 @@ repositioning toward Mobitel LTE coverage.
 | `09-phone-port-fxs.md` | RJ11 FXS port: Le9641 SLIC on the MT7621, firmware archaeology, kernel modules, clock switch, PCM bring-up, caller ID, how to reproduce |
 | `10-phone-port-architecture.md` | Phone port architecture + onboarding: components, interfaces, runtime flows, state machine, timing, design decisions, failure modes, labs, extension points |
 | `11-pbx-asterisk.md` | Home PBX: Asterisk on the router (apk), LAN-only SIP, the phone as extension 100 over AudioSocket, keypad DTMF detection, app/AI-agent hook (ext 800), pitfalls, SLT trunk plan |
-| `12-pbx-setup-guide.md` | PBX hands-on guide: install, everyday commands, every setting and where it lives, adding accounts and your own numbers, connecting softphones / desk phones / apps, test checklist, troubleshooting, backup, how it was set up here |
+| `12-pbx-setup-guide.md` | PBX hands-on guide: install, everyday commands, every setting and where it lives, adding accounts and your own numbers, connecting softphones / desk phones / apps, test checklist, troubleshooting, watching SIP live (HEP → sngrep), backup, how it was set up here |
 | `13-sms-and-persistent-logs.md` | SMS gateway (smstools3: SIM storage, init strings, send/receive) and moving logs, call history and SMS off RAM: what must stay in `/var`, system log to disk, Asterisk log dir + CDR + time zone; rebuild guide |
 | `14-firewall-security.md` | Firewall security check-up: who can reach the router (CGNAT, carrier network, LAN), every check and today's result, the boot-time duplicate `wwan` bug, the audit and provisioning scripts (what they change, safety rails, test mode) |
 | `15-rebuild-after-reset.md` | Factory reset → working router: why the order is extroot → backup → packages → own builds → PBX → firewall, the runbook with commands, what each script was tested with, the package list and the 2026-11-17 Asterisk cleanup |
@@ -243,7 +250,8 @@ repositioning toward Mobitel LTE coverage.
   `router_dump_mtd.sh` (dump orchestrator), `modem_bench.py` (throughput),
   `router_fw_audit.sh` / `router_fw_provision.sh` (firewall check-up and
   provisioning, doc 14), `router_extroot.sh`, `router_packages.sh` +
-  `router-packages.txt` (rebuild after a reset, doc 15)
+  `router-packages.txt` (rebuild after a reset, doc 15), `router_hep.sh`
+  (SIP capture to sngrep, doc 12 §7.1)
 - `fxs/` — RJ11 phone port: kernel modules (`kmod-slic-mt7621/`),
   `slic-fxs/` package (daemon, init script, config, dial hook), `asterisk/`
   (PBX templates + `slic-asterisk-setup`), `slicctl` SLIC tool, `build.sh`, profile extractor, PCM analyser, test audio,

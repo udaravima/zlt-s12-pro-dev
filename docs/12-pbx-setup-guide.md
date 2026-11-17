@@ -552,6 +552,94 @@ After each, `logread -e slicctl | tail` should end with `0 frames dropped`.
 | Call history (`Master.csv`) empty, or times 5:30 h off | no CDR backend installed; no zone file | doc 13 §3.3: `apk add asterisk-cdr-csv zoneinfo-asia` |
 | Log: "no local system nameservers" | harmless | — |
 | Log: "The canary is no more" | harmless: Asterisk lowered its priority | — |
+| A SIP module you just loaded shows `Running` but does nothing (e.g. sngrep gets no HEP) | PJSIP's module table is full: OpenWrt's pjproject allows 32, and this setup uses all of them, so the newcomer can't hook into SIP | `grep 'Unable to register module' /srv/log/asterisk/messages.log`; free a slot (§7.1) |
+
+### 7.1 Watching the SIP messages live (HEP → sngrep)
+
+When a softphone won't register or a call fails, the answer is usually in the
+SIP messages themselves. Asterisk can send a copy of every SIP message it
+sends or receives to one address on the LAN, wrapped in a UDP packet (the
+HEP v3 format). `sngrep` on your PC shows them as a list of calls, each
+with a ladder diagram of who sent what.
+
+**Switch it on** (from the repo; the PC needs a fixed address, so give it a
+static DHCP lease first):
+
+```sh
+# router: send the copies to this PC, UDP port 9060
+/usr/bin/ssh root@192.168.1.254 'sh -s -- on 192.168.1.245:9060' < scripts/router_hep.sh
+# PC
+sudo apt install sngrep
+sngrep -L udp:0.0.0.0:9060        # no sudo: it only listens on a UDP port
+```
+
+`status` shows what is configured and loaded, and `off` undoes everything. The
+script changes `modules.conf` and `hep.conf` (backups go to
+`/root/backups/hep-*`) and swaps the modules in the running Asterisk, so
+nothing restarts. If `sngrep` stays empty while a phone is active, the PC's
+firewall is the next suspect: `sudo ufw allow from 192.168.1.254 to any port
+9060 proto udp`. On this PC, ufw's default DROP let the packets through
+without a new rule (2026-11-17), probably because of an existing rule.
+
+**What you'll see first: nothing.** Asterisk sends no SIP on its own; it
+only answers. So the first entries appear when a softphone registers:
+`REGISTER` → `401 Unauthorized` (a challenge with a random nonce) →
+`REGISTER` again, now with an `Authorization` line → `200 OK`. This is
+digest authentication: the password never crosses the network, only a hash
+of it mixed with the nonce.
+
+**What it can't show:**
+- **The RJ11 handset.** Extension 100 talks to Asterisk over AudioSocket,
+  not SIP, so a call between the handset and 600, 601 or 800 shows nothing.
+  A call between the handset and a softphone shows the softphone's half.
+- **ARI.** The call agent talks HTTP and WebSocket.
+- **Audio.** Only signalling is copied. RTCP call-quality reports would need
+  `asterisk-res-hep-rtcp`, which isn't installed.
+
+**The trap: "Running" isn't working.** OpenWrt builds pjproject (Asterisk's
+SIP stack) with the stock limit of **32 PJSIP modules**. Asterisk's own
+bundled copy raises it to 38, because Asterisk needs more. With this
+router's SIP modules all 32 slots were taken, so `res_hep_pjsip` loaded and
+showed `Running`, but couldn't hook into SIP and captured nothing. The only
+sign is one log line: `Unable to register module HEPv3 Logging Module`.
+`router_hep.sh on` therefore gives HEP the slot of `res_pjsip_history` (the
+`pjsip set history` debug buffer, which HEP and sngrep replace), and checks
+the log for that error after loading. **There are now no spare slots.** Any
+new module that hooks into SIP will fail the same quiet way, and after a
+restart the loser could be an important one. Run the `grep` from the §7 table
+after adding any `asterisk-res-pjsip-*` package.
+
+**Privacy.** Each copy carries the whole SIP message: numbers, names, and
+the `Authorization` hash. That hash can only be attacked offline by
+guessing, which is hopeless against the setup's random 20-character
+passwords. The copies go unencrypted to one LAN address. If you'd rather
+not leave that running, switch HEP off between debugging sessions.
+
+**After a restart or a reset.** Both files belong to Asterisk packages.
+Once they differ from the package version, a LuCI backup includes them
+(`sysupgrade -l` lists them). So take a fresh backup after switching HEP
+on or off. `asterisk-res-hep-pjsip` is in `scripts/router-packages.txt`.
+
+**Verified 2026-11-17:**
+- **Without the swap:** `res_hep_pjsip` was `Running`, but nothing left the
+  router (no conntrack entry for port 9060), and the log had the
+  registration error.
+- **With history unloaded:** a test `OPTIONS` from the PC and Asterisk's
+  `401` reply both arrived at the PC as HEP v3 packets (capture ID 1234, no
+  password).
+- **After `on` and an Asterisk restart:**
+  - the same 116 modules loaded;
+  - no new registration error;
+  - ARI still answered;
+  - the packaged `sngrep` 1.8.3 (built with EEP/HEP support), running as a
+    normal user, captured both messages into a pcap.
+
+**Then, with real phones:** 201 (a mobile at .138) and 204 (another
+mobile) were given their new passwords and registered, and `sngrep` on the
+PC showed their traffic, as confirmed by the user.
+
+**Not tested:** a full router reboot. It loads the same files, but wasn't
+done.
 
 ---
 
