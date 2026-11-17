@@ -3,6 +3,8 @@
 #   slic_spi_cs1.ko, mt7621_pcm_raw.ko  (OpenWrt SDK kernel modules)
 #   slicctl                             (userspace SLIC control, musl/mipsel)
 #   *.s16 test audio, slic-play.sh
+#   *.apk: kmod-slic-spi-cs1, kmod-mt7621-pcm-raw, slic-fxs, and
+#          luci-app-slic-fxs (LuCI pages, architecture-independent; doc 16)
 #
 # Prereqs (see the phone-port doc, "How to reproduce"):
 #   - OpenWrt SDK 25.12.6 ramips/mt7621 unpacked at $SDK
@@ -29,7 +31,8 @@ echo "src-link zltphone $REPO" >> "$SDK/feeds.conf"
 rm -f "$SDK/package/kmod-slic-mt7621" "$SDK/package/slic-fxs"	# old direct symlinks
 # full update (not -i): only that recreates feeds/zltphone -> $REPO
 (cd "$SDK" && ./scripts/feeds update zltphone >/dev/null &&
-	./scripts/feeds install -p zltphone kmod-slic-spi-cs1 kmod-mt7621-pcm-raw slic-fxs >/dev/null)
+	./scripts/feeds install -p zltphone kmod-slic-spi-cs1 kmod-mt7621-pcm-raw slic-fxs \
+		luci-app-slic-fxs >/dev/null)
 linked=$(readlink -f "$SDK/feeds/zltphone")
 [ "$linked" = "$REPO" ] || { echo "SDK feed zltphone -> $linked, expected $REPO"; exit 1; }
 echo "feed zltphone -> $linked"
@@ -63,9 +66,19 @@ if ! make -C "$SDK" package/slic-fxs/compile V=s > "$OUT/slic-fxs-build.log" 2>&
 	grep -E 'error|Error' "$OUT/slic-fxs-build.log" | head -n 20; exit 1
 fi
 
+# --- luci-app-slic-fxs (LuCI pages: phone status, line settings; nothing to compile) ---
+grep -q '^CONFIG_PACKAGE_luci-app-slic-fxs=m' "$SDK/.config" || {
+	echo 'CONFIG_PACKAGE_luci-app-slic-fxs=m' >> "$SDK/.config"
+	make -C "$SDK" defconfig >/dev/null
+}
+make -C "$SDK" package/luci-app-slic-fxs/clean >/dev/null
+if ! make -C "$SDK" package/luci-app-slic-fxs/compile V=s > "$OUT/luci-build.log" 2>&1; then
+	grep -E 'error|Error' "$OUT/luci-build.log" | head -n 20; exit 1
+fi
+
 # --- collect installable packages ---
 rm -f "$OUT"/*.apk
-for p in kmod-slic-spi-cs1 kmod-mt7621-pcm-raw slic-fxs; do
+for p in kmod-slic-spi-cs1 kmod-mt7621-pcm-raw slic-fxs luci-app-slic-fxs; do
 	apk=$(find "$SDK/bin" -name "$p-[0-9]*.apk" -newer "$HERE/build.sh" | head -n 1)
 	[ -n "$apk" ] || apk=$(ls -t $(find "$SDK/bin" -name "$p-[0-9]*.apk") | head -n 1)
 	[ -n "$apk" ] || { echo "no package built for $p"; exit 1; }
@@ -74,3 +87,4 @@ for p in kmod-slic-spi-cs1 kmod-mt7621-pcm-raw slic-fxs; do
 done
 echo "install on the router:"
 echo "  scp -O $OUT/*.apk root@ROUTER:/tmp/ && ssh root@ROUTER 'apk add --allow-untrusted /tmp/*slic*.apk /tmp/kmod-mt7621-pcm-raw*.apk'"
+echo "  (*slic* includes luci-app-slic-fxs, the optional LuCI pages: delete its .apk first to skip them)"

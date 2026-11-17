@@ -225,8 +225,11 @@ an Asterisk restart. The previous `world` and installed list are in
    provisioning (SSH key-only + LAN-only, ARI site LAN-only, drop the IPsec
    passthrough), then reboot once to check the guard.
 4b. **Rebuild runbook** (doc 15): every script is tested on its own; run
-   the whole sequence once for real. Install `slic-fxs` r6, and take a
-   fresh LuCI backup.
+   the whole sequence once for real, and take a fresh LuCI backup.
+   (`slic-fxs` r6 is installed since 2026-11-17.)
+4c. **LuCI phone pages** (doc 16): installed; backend and Save & Apply
+   path tested on the router. Look at both tabs in a browser and Save &
+   Apply one change.
 5. **Persist the usb2 management link** (uci on router + adb-side modem
    setup at boot).
 6. **Cross-toolchain** (armv7, static musl or glibc ≥ 2.27) → tiny static

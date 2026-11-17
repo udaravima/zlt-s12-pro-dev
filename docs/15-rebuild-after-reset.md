@@ -130,11 +130,14 @@ names the ones that failed.
 ### Step 5 — your own builds
 
 ```sh
-for f in fxs/build/kmod-slic-spi-cs1-*.apk fxs/build/kmod-mt7621-pcm-raw-*.apk fxs/build/slic-fxs-*-r6.apk; do
+for f in fxs/build/kmod-slic-spi-cs1-*.apk fxs/build/kmod-mt7621-pcm-raw-*.apk fxs/build/slic-fxs-*-r6.apk \
+         fxs/build/luci-app-slic-fxs-*.apk; do
     /usr/bin/ssh $R "cat > /tmp/${f##*/}" < "$f"
 done
-/usr/bin/ssh $R 'apk add --allow-untrusted /tmp/kmod-slic-spi-cs1-*.apk /tmp/kmod-mt7621-pcm-raw-*.apk /tmp/slic-fxs-*.apk'
+/usr/bin/ssh $R 'apk add --allow-untrusted /tmp/kmod-slic-spi-cs1-*.apk /tmp/kmod-mt7621-pcm-raw-*.apk /tmp/slic-fxs-*.apk /tmp/luci-app-slic-fxs-*.apk'
 ```
+
+`luci-app-slic-fxs` is optional: the LuCI pages Services → Phone (doc 16).
 
 The kmods are tied to one kernel (6.12.112 here). After an OS upgrade with a
 new kernel, rebuild them first (doc 09 §10).
@@ -192,7 +195,8 @@ switches SSH to key-only (doc 14 §4.2).
 |---|---|---|
 | `router_extroot.sh` | `status` and the `attach` dry run live (correctly "already active"). `attach` on stand-in folders: no choice → refused; `--reuse` with another kernel's modules → refused; `--fresh --apply` → old overlay archived intact, current copied (symlinks included), fstab entries written; live fstab unchanged (md5). The tar copy keeps overlayfs whiteouts (`0,0` devices) on raw ext4. | the real mount and reboot after an actual reset |
 | `router_packages.sh` | `snapshot` live (126 packages + 3 local); `check` live (0 missing, after fixing names provided by another package, e.g. `hostapd`); the `restore` failure path with a fake name (named it, `world` stayed clean) | a full `restore` onto an empty router |
-| `slic-asterisk-setup` r6 | syntax; ARI group and leftover-package note: see doc 12 §8.1 | install from the r6 package |
+| `slic-asterisk-setup` r6 | syntax; ARI group and leftover-package note: see doc 12 §8.1. The r6 package was installed over r5 on 2026-11-17 (it has no install scripts: files only, nothing restarted) | a setup run from the installed r6 |
+| `luci-app-slic-fxs` | doc 16 §7: backend, Save & Apply path, offline render test, package install | the pages in a browser |
 | `router_fw_provision.sh` | doc 14 §4.3 | live `--apply` |
 | `router_hep.sh` | on copies of the two files: a second `on` changes nothing; `off` restores `modules.conf` byte for byte; your own `noload` of `res_pjsip_history` is kept; an unexpected `hep.conf` layout → both files restored; owner and mode kept. Live: `on`, then an Asterisk restart (doc 12 §7.1) | a router reboot; coming back through a backup restore |
 
@@ -238,8 +242,9 @@ call to 601 played to the end. Before-state:
 ## 5. Open items
 
 1. Run the whole sequence once for real: the next reset or a spare router.
-2. Install `slic-fxs` r6 on the live router. It's only needed for the reset
-   path, which installs it from `fxs/build` anyway.
+2. ~~Install `slic-fxs` r6 on the live router~~: done 2026-11-17, together
+   with `luci-app-slic-fxs` (doc 16). The r5 files are in
+   `/root/backups/slic-fxs-r5-20261117-160223.tgz`.
 3. Take a fresh LuCI backup now: the last one predates the prune, the
    firewall work and HEP.
 

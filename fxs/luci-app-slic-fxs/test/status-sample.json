@@ -1,0 +1,163 @@
+{
+	"time": 1794911655,
+	"line": {
+		"installed": true,
+		"enabled": true,
+		"running": true,
+		"pid": 16742,
+		"config": {
+			"cid_format": "bell",
+			"dial_timeout": "3",
+			"audiosocket": "127.0.0.1:4573"
+		},
+		"applied": {
+			"cid_format": "bell",
+			"dial_timeout": "3",
+			"audiosocket": "127.0.0.1:4573"
+		},
+		"state": "idle",
+		"hook": "on",
+		"call_phase": null,
+		"modules": {
+			"slic_spi_cs1": true,
+			"mt7621_pcm_raw": true
+		},
+		"devices": {
+			"spi": true,
+			"pcm": true
+		},
+		"crash_guard": false,
+		"events": [
+			{
+				"time": "Nov 17 16:02:54",
+				"level": "info",
+				"text": "daemon stopped, line STANDBY"
+			},
+			{
+				"time": "Nov 17 16:02:54",
+				"level": "info",
+				"text": "RCN=0x08 PCN=0x49  -> Le9641 (SF1 low-voltage 1ch tracker). SPI framing OK."
+			},
+			{
+				"time": "Nov 17 16:02:54",
+				"level": "info",
+				"text": "init started (board device profile, DC VP-API default, ring VP-API default)"
+			},
+			{
+				"time": "Nov 17 16:02:55",
+				"level": "info",
+				"text": "[263068.718] RESPONSE  id=0x0400 data=0x0000 ch=0"
+			},
+			{
+				"time": "Nov 17 16:02:55",
+				"level": "info",
+				"text": "VpCalLine status 0"
+			},
+			{
+				"time": "Nov 17 16:02:55",
+				"level": "info",
+				"text": "[263069.201] RESPONSE  id=0x0040 data=0x0000 ch=0"
+			},
+			{
+				"time": "Nov 17 16:02:55",
+				"level": "info",
+				"text": "device ready, line STANDBY"
+			},
+			{
+				"time": "Nov 17 16:02:55",
+				"level": "info",
+				"text": "daemon ready: control via /var/run/slic.ctl, AudioSocket 127.0.0.1:4573"
+			}
+		]
+	},
+	"pbx": {
+		"installed": true,
+		"running": true,
+		"log": "/srv/log/asterisk/messages.log",
+		"problems": [
+			"[Nov 17 14:48:18] ERROR[12285] pjproject:  ../src/pjsip/s Assert failed: pj_list_find_node(&endpt->module_list, mod) == mod",
+			"[Nov 17 14:48:20] NOTICE[12285] res_pjsip/pjsip_distributor.c: Request 'OPTIONS' from '<sip:hep-test@192.168.1.245>' failed for '192.168.1.245:59274' (callid: fbbad9b78a11440c9b08133d2ccd12ba) - No matching endpoint found",
+			"[Nov 17 14:50:21] ERROR[14840] res_pjsip/config_system.c: There are no local system nameservers configured, resorting to system resolution",
+			"[Nov 17 14:50:21] ERROR[14840] res_pjsip/config_system.c: There are no local system nameservers configured, resorting to system resolution",
+			"[Nov 17 14:50:21] ERROR[14786] file.c: Error opening directory - /usr/share/asterisk/moh: No such file or directory",
+			"[Nov 17 14:50:21] WARNING[14786] res_musiconhold.c: No music on hold classes configured, disabling music on hold.",
+			"[Nov 17 14:50:44] NOTICE[14840] res_pjsip/pjsip_distributor.c: Request 'OPTIONS' from '<sip:hep-test@192.168.1.245>' failed for '192.168.1.245:42134' (callid: b9bb691c88244c829db2b361c36dab6c) - No matching endpoint found",
+			"[Nov 17 14:52:20] WARNING[14814] asterisk.c: The canary is no more.  He has ceased to be!  He's expired and gone to meet his maker!  He's a stiff!  Bereft of life, he rests in peace.  His metabolic processes are now history!  He's off the twig!  He's kicked the bucket.  He's shuffled off his mortal \u2026",
+			"[Nov 17 14:52:20] WARNING[14814] asterisk.c: Unable to set regular thread priority on main thread",
+			"[Nov 17 15:41:06] WARNING[14857] pbx_spool.c: Unable to set utime on /var/spool/asterisk/outgoing/st.call: Operation not permitted"
+		],
+		"hep": {
+			"installed": true,
+			"enabled": true,
+			"address": "192.168.1.245:9060",
+			"api_loaded": true,
+			"sip_loaded": true
+		},
+		"pid": 14786,
+		"version": "23.1.0",
+		"uptime": 4436,
+		"module_errors": [],
+		"endpoints": [
+			{
+				"name": "201",
+				"cid": "201",
+				"state": "Not in use",
+				"channels": "0 of inf",
+				"contacts": [
+					{
+						"uri": "sip:201@192.168.1.138:41868",
+						"status": "Avail",
+						"rtt": "439.189"
+					}
+				],
+				"calls": []
+			},
+			{
+				"name": "202",
+				"cid": "202",
+				"state": "Not in use",
+				"channels": "0 of inf",
+				"contacts": [
+					{
+						"uri": "sip:202@192.168.1.158:46001;transport",
+						"status": "Avail",
+						"rtt": "456.818"
+					}
+				],
+				"calls": []
+			},
+			{
+				"name": "203",
+				"cid": "203",
+				"state": "Unavailable",
+				"channels": "0 of inf",
+				"contacts": [],
+				"calls": []
+			},
+			{
+				"name": "204",
+				"cid": "204",
+				"state": "Not in use",
+				"channels": "0 of inf",
+				"contacts": [
+					{
+						"uri": "sip:204@192.168.1.216:46619",
+						"status": "Avail",
+						"rtt": "1700.981"
+					}
+				],
+				"calls": []
+			},
+			{
+				"name": "205",
+				"cid": "205",
+				"state": "Unavailable",
+				"channels": "0 of inf",
+				"contacts": [],
+				"calls": []
+			}
+		],
+		"cli": true,
+		"channels": []
+	}
+}

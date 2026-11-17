@@ -1,0 +1,366 @@
+// SPDX-License-Identifier: GPL-2.0-only
+//
+// luci.slic: the read-only data source behind luci-app-slic-fxs.
+//
+//   ubus call luci.slic status
+//
+// One method, no arguments: the RJ11 phone line (the slicctl daemon of the
+// slic-fxs package) and, if installed, the Asterisk PBX next to it. It reads
+// files wherever it can. Per call it starts two "asterisk -rx" (0.15 s each
+// on an MT7621); logread (0.4 s: it fetches the whole log buffer) runs only
+// when the line's state or call file changed, or once a minute; "asterisk -V"
+// once per Asterisk start.
+//
+// Parses Asterisk's CLI text ("pjsip show endpoints"), which is written for
+// people, not programs: checked against Asterisk 23. It also cuts contact
+// URIs to its column width. Asterisk log times have no year, so "since
+// Asterisk started" can misjudge lines across New Year.
+//
+// ucode regex note: \s works outside brackets only; inside, use [:space:].
+
+'use strict';
+
+import { readfile, open, popen, stat, access } from 'fs';
+import { connect } from 'ubus';
+import { cursor } from 'uci';
+
+const LINE_STATE = '/var/run/slic.state';
+const LINE_CALL = '/var/run/slic.call';
+const LINE_MARKER = '/etc/slic.loading';	// set by /etc/init.d/slic while loading the modules
+const AST_BIN = '/usr/sbin/asterisk';
+const AST_ETC = '/etc/asterisk';
+const AST_PIDFILE = '/var/run/asterisk/asterisk.pid';
+const USER_HZ = 100;		// unit of the start time in /proc/PID/stat
+const MONTHS = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6,
+                 Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
+const MAX_EVENTS = 8;		// phone-line log lines returned
+const MAX_PROBLEMS = 10;	// Asterisk log lines returned
+const LOG_SCAN_MAX = 2 * 1024 * 1024;	// read at most this much new log per call
+const LINE_MAX = 300;		// characters kept per log line
+const EVENTS_TTL = 60;		// s: re-read the line's log at least this often
+
+// rpcd keeps this plugin loaded, so these survive between calls: Asterisk's
+// version is looked up once per process, its log is read incrementally, and
+// the line's log lines are re-read only when something changed
+let cache = { pid: null, version: null };
+let logscan = { path: null, inode: null, offset: 0, problems: [], regerrs: [] };
+let evcache = { key: null, at: 0, events: [] };
+
+function run(cmd) {
+	const p = popen(cmd, 'r');
+	if (!p)
+		return '';
+	const out = p.read('all') ?? '';
+	p.close();
+	return out;
+}
+
+// cmd is always one of the constants below, never user input
+function ast(cmd) {
+	return run(`${AST_BIN} -rx '${cmd}' 2>/dev/null`);
+}
+
+function short(l) {
+	l = replace(trim(l), /\t/g, ' ');
+	return length(l) > LINE_MAX ? substr(l, 0, LINE_MAX) + '…' : l;
+}
+
+function kv(text) {
+	let r = {};
+	for (let l in split(text ?? '', '\n')) {
+		const m = match(l, /^([a-z_]+)=(.*)$/);
+		if (m)
+			r[m[1]] = m[2];
+	}
+	return r;
+}
+
+// ---- the phone line ------------------------------------------------------
+
+function has_module(mods, name) {
+	return index(mods, name + ' ') == 0 || index(mods, '\n' + name + ' ') >= 0;
+}
+
+// last lines from the daemon (tag slicctl) and the init script (tag slic).
+// logread -l counts lines *before* -e filters them, so filter, then cut.
+// The daemon logs when the line changes, and every change rewrites the state
+// or call file: their mtimes (plus the daemon's pid) say when to look again.
+function line_events(pid) {
+	const key = sprintf('%d/%d/%d', stat(LINE_STATE)?.mtime ?? 0,
+	                    stat(LINE_CALL)?.mtime ?? 0, pid ?? 0);
+	if (key == evcache.key && time() - evcache.at < EVENTS_TTL)
+		return evcache.events;
+
+	let out = [];
+	for (let l in split(run('logread -e slic 2>/dev/null'), '\n')) {
+		// "Tue Nov 17 15:00:09 2026 daemon.info slicctl[6376]: call ended ..."
+		const m = match(l, /^\w+ (\w+ +\d+ [0-9:]+) \d+ [a-z]+\.([a-z]+) (slicctl|slic)(\[\d+\])?: (.*)$/);
+		if (m)
+			push(out, { time: m[1], level: m[2], text: short(m[5]) });
+	}
+	evcache = { key, at: time(), events: slice(out, -MAX_EVENTS) };
+	return evcache.events;
+}
+
+function line_status(bus) {
+	const uci = cursor();
+	const opt = (name, dflt) => uci.get('slic', 'main', name) ?? dflt;
+	const svc = bus?.call('service', 'list', { name: 'slic' })?.slic?.instances ?? {};
+	let inst = null;
+	for (let name, i in svc) {
+		inst = i;
+		break;
+	}
+	const mods = readfile('/proc/modules') ?? '';
+	// what the daemon really runs with: procd's own record (inst.env) can
+	// show new values the process never got (procd misses some changes; see
+	// reload_service in /etc/init.d/slic)
+	let env = {};
+	if (inst?.running && inst?.pid)
+		for (let e in split(readfile(`/proc/${inst.pid}/environ`) ?? '', '\0')) {
+			const i = index(e, '=');
+			if (i > 0)
+				env[substr(e, 0, i)] = substr(e, i + 1);
+		}
+	const st = kv(readfile(LINE_STATE));
+	const call = trim(readfile(LINE_CALL) ?? '');
+	const us = rindex(call, '_');
+
+	return {
+		installed: access('/etc/init.d/slic') ? true : false,
+		enabled: opt('enabled', '1') == '1',
+		running: inst?.running ? true : false,
+		pid: inst?.pid,
+		// what is saved, and what the running daemon was started with
+		config: {
+			cid_format: opt('cid_format', 'bell'),
+			dial_timeout: opt('dial_timeout', '3'),
+			audiosocket: opt('audiosocket', '127.0.0.1:4573')
+		},
+		applied: {
+			cid_format: env.SLIC_CID_FMT,
+			dial_timeout: env.SLIC_DIAL_TIMEOUT,
+			audiosocket: env.SLIC_AUDIOSOCKET
+		},
+		state: st.state,	// idle dialtone dialing ringing talk busy
+		hook: st.hook,		// on off
+		call_phase: us >= 0 ? substr(call, us + 1) : null,
+		modules: {
+			slic_spi_cs1: has_module(mods, 'slic_spi_cs1'),
+			mt7621_pcm_raw: has_module(mods, 'mt7621_pcm_raw')
+		},
+		devices: {
+			spi: access('/dev/spidev0.1') ? true : false,
+			pcm: access('/dev/slicpcm') ? true : false
+		},
+		crash_guard: access(LINE_MARKER) ? true : false,
+		events: line_events(inst?.pid)
+	};
+}
+
+// ---- Asterisk ------------------------------------------------------------
+
+function ast_pid() {
+	const pid = int(trim(readfile(AST_PIDFILE) ?? ''));
+	if (!pid || trim(readfile(`/proc/${pid}/comm`) ?? '') != 'asterisk')
+		return null;
+	return pid;
+}
+
+// seconds since the process started
+function proc_age(pid) {
+	const st = readfile(`/proc/${pid}/stat`) ?? '';
+	const f = split(substr(st, rindex(st, ')') + 2), ' ');	// f[0] is field 3
+	const up = +(split(readfile('/proc/uptime') ?? '0', ' ')[0]);
+	return int(up - +f[19] / USER_HZ);			// field 22: start time
+}
+
+function ast_logfile() {
+	let dir = '/var/log/asterisk';
+	for (let l in split(readfile(`${AST_ETC}/asterisk.conf`) ?? '', '\n')) {
+		const m = match(l, /^\s*astlogdir\s*=>?\s*([^[:space:];]+)/);
+		if (m)
+			dir = m[1];
+	}
+	for (let f in [ `${dir}/messages.log`, `${dir}/messages` ])
+		if (access(f))
+			return f;
+	return null;
+}
+
+function tkey(mon, day, h, mi, s) {
+	return ((mon * 32 + day) * 24 + h) * 3600 + mi * 60 + s;
+}
+
+// "[Nov 17 14:44:52] ERROR[12285] ..." (logger.conf's default dateformat)
+function line_key(l) {
+	const m = match(l, /^\[(\w{3}) +(\d+) (\d+):(\d+):(\d+)\]/);
+	return m ? tkey(MONTHS[m[1]] ?? 0, +m[2], +m[3], +m[4], +m[5]) : null;
+}
+
+// read what was appended since the last call; start over if the log was
+// rotated (new inode) or truncated
+function scan_log(path) {
+	const s = stat(path);
+	if (!s)
+		return;
+	if (logscan.path != path || logscan.inode != s.inode || s.size < logscan.offset)
+		logscan = { path, inode: s.inode, offset: 0, problems: [], regerrs: [] };
+	if (s.size == logscan.offset)
+		return;
+
+	let from = logscan.offset;
+	if (s.size - from > LOG_SCAN_MAX)
+		from = s.size - LOG_SCAN_MAX;
+	const f = open(path, 'r');
+	if (!f)
+		return;
+	f.seek(from, 0);
+	let text = f.read(s.size - from) ?? '';
+	f.close();
+
+	const nl = rindex(text, '\n');
+	if (nl < 0)
+		return;			// no complete line yet
+	let lines = split(substr(text, 0, nl), '\n');
+	if (from > logscan.offset)
+		shift(lines);		// skipped ahead: the first line is partial
+	logscan.offset = from + nl + 1;
+
+	for (let l in lines) {
+		if (index(l, 'Unable to register module') >= 0)
+			push(logscan.regerrs, l);
+		if (match(l, /\] (ERROR|WARNING)\[/) ||
+		    (index(l, '] NOTICE[') >= 0 && index(l, "failed for '") >= 0))
+			push(logscan.problems, l);
+	}
+	logscan.regerrs = slice(logscan.regerrs, -50);
+	logscan.problems = slice(logscan.problems, -MAX_PROBLEMS);
+}
+
+function hep_status(pid) {
+	const conf = readfile(`${AST_ETC}/hep.conf`);
+	if (conf == null)
+		return { installed: false };
+	let enabled = false, address = null;
+	for (let l in split(conf, '\n')) {
+		let m = match(l, /^\s*enabled\s*=\s*(\w+)/);
+		if (m)
+			enabled = index([ 'yes', 'true', 'on', '1' ], lc(m[1])) >= 0;
+		m = match(l, /^\s*capture_address\s*=\s*([^[:space:];]+)/);
+		if (m)
+			address = m[1];
+	}
+	// a loaded module is a mapped .so: no "module show" process needed
+	const maps = pid ? (readfile(`/proc/${pid}/maps`) ?? '') : '';
+	return {
+		installed: true, enabled, address,
+		api_loaded: index(maps, '/res_hep.so') >= 0,
+		sip_loaded: index(maps, '/res_hep_pjsip.so') >= 0
+	};
+}
+
+// "pjsip show endpoints": one block per endpoint, with its contacts and
+// channels; columns are separated by two or more spaces
+function parse_endpoints(out) {
+	if (index(out, 'No objects found') >= 0)
+		return [];
+	if (index(out, 'Endpoint:') < 0)
+		return null;
+	let eps = [], cur = null, body = false;
+	for (let l in split(out, '\n')) {
+		if (!body) {
+			body = match(l, /^=+$/) ? true : false;	// the legend ends here
+			continue;
+		}
+		const t = trim(l);
+		if (substr(t, 0, 9) == 'Endpoint:') {
+			const c = split(trim(substr(t, 9)), /  +/);
+			const id = split(c[0], '/');
+			cur = { name: id[0], cid: join('/', slice(id, 1)), state: c[1] ?? '',
+			        channels: c[2] ?? '', contacts: [], calls: [] };
+			push(eps, cur);
+		}
+		else if (cur && substr(t, 0, 8) == 'Contact:') {
+			const c = split(trim(substr(t, 8)), /\s+/);	// aor/uri hash status rtt
+			push(cur.contacts, { uri: substr(c[0], index(c[0], '/') + 1),
+			                     status: c[2] ?? '', rtt: c[3] ?? '' });
+		}
+		else if (cur && substr(t, 0, 8) == 'Channel:') {
+			const c = split(trim(substr(t, 8)), /  +/);
+			push(cur.calls, { channel: c[0], state: c[1] ?? '', time: c[2] ?? '' });
+		}
+	}
+	return eps;
+}
+
+// "core show channels concise": one line per channel, fields joined by "!"
+function parse_channels(out) {
+	let r = [];
+	for (let l in split(out, '\n')) {
+		const f = split(l, '!');
+		if (length(f) < 12)
+			continue;
+		push(r, { channel: f[0], context: f[1], exten: f[2], state: f[4],
+		          app: f[5], data: short(f[6]), callerid: f[7],
+		          duration: +f[11], bridge: f[12] ?? '' });
+	}
+	return r;
+}
+
+function ast_status() {
+	if (!access(AST_BIN))
+		return { installed: false };
+
+	const pid = ast_pid();
+	const log = ast_logfile();
+	if (log)
+		scan_log(log);
+
+	let r = {
+		installed: true,
+		running: pid ? true : false,
+		log,
+		problems: map(logscan.problems, short),
+		hep: hep_status(pid)
+	};
+	if (!pid)
+		return r;
+
+	if (cache.pid != pid)
+		cache = { pid, version: match(run(`${AST_BIN} -V 2>/dev/null`), /Asterisk (\S+)/)?.[1] };
+	r.pid = pid;
+	r.version = cache.version;
+	r.uptime = proc_age(pid);
+
+	// "Unable to register module X" since this Asterisk started: X shows as
+	// Running but never sees a SIP message (PJSIP's module table is full)
+	const t0 = localtime(time() - r.uptime);
+	const k0 = tkey(t0.mon, t0.mday, t0.hour, t0.min, t0.sec) - 2;
+	r.module_errors = [];
+	for (let l in logscan.regerrs) {
+		const k = line_key(l);
+		if (k == null || k >= k0)
+			push(r.module_errors, short(l));
+	}
+
+	r.endpoints = parse_endpoints(ast('pjsip show endpoints'));
+	r.cli = r.endpoints != null;		// false: Asterisk runs but its CLI didn't answer
+	r.channels = r.cli ? parse_channels(ast('core show channels concise')) : [];
+	return r;
+}
+
+// ---- rpcd ----------------------------------------------------------------
+
+const methods = {
+	status: {
+		call: function() {
+			const bus = connect();
+			const r = { time: time(), line: line_status(bus), pbx: ast_status() };
+			bus?.disconnect();
+			return r;
+		}
+	}
+};
+
+return { 'luci.slic': methods };

@@ -14,6 +14,7 @@ the PBX is [11-pbx-asterisk.md](../docs/11-pbx-asterisk.md)
 |---|---|
 | `kmod-slic-mt7621/` | OpenWrt kernel package: `slic_spi_cs1` (SLIC on SPI CS1 → `/dev/spidev0.1`), `mt7621_pcm_raw` (PCM clock + `/dev/slicpcm`) |
 | `slicctl/` | SLIC control tool + `daemon` mode on Microsemi VP-API-II (`fetch-vpapi.sh` pulls the API) |
+| `luci-app-slic-fxs/` | Optional OpenWrt package: LuCI pages Services → Phone → **Status** (line, PBX, SIP phones, calls, problems) and **Phone line** (form over `/etc/config/slic`); backend `ubus call luci.slic status` ([doc 16](../docs/16-luci-phone-pages.md)) |
 | `slic-fxs/` | OpenWrt package: slicctl, `/etc/init.d/slic` (late load + boot-loop failsafe), `/etc/config/slic`, slic-play |
 | `slicctl/cid.c` | Caller-ID generator: MDMF + Bell 202 / V.23 FSK, DTMF |
 | `slicctl/dtmf.c` | Keypad (DTMF) detector on the handset audio |

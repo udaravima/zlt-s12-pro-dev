@@ -117,6 +117,20 @@ chown asterisk:asterisk $f && mv $f /var/spool/asterisk/outgoing/
 packaged. Call files do the same job. Never put a `;` in one: it starts a
 comment.)
 
+### 3.1 In the browser (LuCI)
+
+With `luci-app-slic-fxs` installed (doc 16 §2), **Services → Phone** in
+the router's web interface shows most of the table above on one page:
+- the line's state and its recent events;
+- whether Asterisk runs;
+- which phones are registered, and from where;
+- the calls in progress;
+- recent problems from Asterisk's log.
+
+The **Phone line** tab edits `/etc/config/slic` (§4.3). The pages can't
+change accounts or the dialplan yet: those still need SSH. Doc 16 has every
+field, where each value comes from, and what a refresh costs the router.
+
 ---
 
 ## 4. Configuration
@@ -178,6 +192,14 @@ and a laptop with the same account; both ring. Caller ID for an account is
 ```sh
 uci set slic.main.dial_timeout=4; uci commit slic; /etc/init.d/slic restart
 ```
+
+Or in LuCI: Services → Phone → Phone line, then Save & Apply (§3.1). Either
+way the daemon restarts (about 2 s, and a call in progress is cut off).
+
+**Before `slic-fxs` r6, `reload` didn't apply many changes.** procd compares
+the daemon's environment without the last 4 bytes of each entry, so a change
+like 3 → 4 never restarted it; `restart` always worked. Doc 16 §4 has the
+details.
 
 | Option | Default | What it does | Recommendation |
 |---|---|---|---|

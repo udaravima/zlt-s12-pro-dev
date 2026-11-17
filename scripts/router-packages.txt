@@ -3,6 +3,7 @@
 # Dependencies are not listed (apk adds them). Lines starting with # are ignored.
 # local: kmod-mt7621-pcm-raw   (fxs/build, apk add --allow-untrusted)
 # local: kmod-slic-spi-cs1   (fxs/build, apk add --allow-untrusted)
+# local: luci-app-slic-fxs   (fxs/build, apk add --allow-untrusted)
 # local: slic-fxs   (fxs/build, apk add --allow-untrusted)
 adb
 airmon-ng

@@ -1,0 +1,32 @@
+{
+	"admin/services/slic": {
+		"title": "Phone",
+		"order": 60,
+		"action": {
+			"type": "alias",
+			"path": "admin/services/slic/status"
+		},
+		"depends": {
+			"acl": [ "luci-app-slic-fxs" ],
+			"uci": { "slic": true }
+		}
+	},
+
+	"admin/services/slic/status": {
+		"title": "Status",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "slic/status"
+		}
+	},
+
+	"admin/services/slic/line": {
+		"title": "Phone line",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "slic/line"
+		}
+	}
+}

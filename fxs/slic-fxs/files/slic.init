@@ -60,3 +60,15 @@ start_service() {
 service_triggers() {
 	procd_add_reload_trigger slic
 }
+
+# A config change (uci commit + reload, or LuCI's Save & Apply) must restart
+# the daemon: it reads its settings only at start. procd would restart it
+# when the instance's environment changes, but procd 2026.03.13 compares
+# environment entries without their last 4 bytes (blobmsg_list_equal), so
+# e.g. dial_timeout 3 -> 4 updated procd's record and left the daemon
+# running with 3. Restart explicitly. (procd_lock is re-entrant: stop's lock
+# call succeeds on the descriptor reload() already locked.)
+reload_service() {
+	stop
+	start
+}

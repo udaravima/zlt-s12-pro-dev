@@ -156,6 +156,14 @@ Convert any clip: `ffmpeg -i in.mp3 -ac 1 -ar 8000 -f s16le out.s16`.
 | `audiosocket` | `127.0.0.1:4573` | where the daemon accepts Asterisk's AudioSocket connections; keep it on loopback; `off` disables calls |
 | `dial_timeout` | `3` | seconds without a key that end dialling (`#` dials at once) |
 
+The daemon reads these only at start (as environment variables from the init
+script). Since `slic-fxs` r6, `/etc/init.d/slic reload` (which a `uci`
+change through LuCI triggers) restarts it. Before r6, procd decided whether
+to restart, and missed changes hidden in the last 4 bytes of an environment
+entry (doc 16 §4). `clk_switch` and `spi_hz` are module parameters: they
+change only at the next module load, in practice the next boot. LuCI form:
+doc 16 §1.3.
+
 ### 3.5 Kernel module parameters
 
 `mt7621_pcm_raw`: `clk_switch` (0), `setup_pll` (1), `freqin` (294000000 Hz),
@@ -362,6 +370,7 @@ on:
 | Hear the handset microphone | read `/dev/slicpcm` while in `talk` | echo of what you play is cancelled in the driver (OSLEC, `ec=Y`; doc 11 §7.1) |
 | Dial digits from the phone | Asterisk: dialled numbers run in `[from-phone]` (doc 11) | without Asterisk, digits only appear in the log |
 | Full calls (SIP, apps, AI agents) | Asterisk extension 100 / 800 (doc 11) | AudioSocket for apps: 8 kHz s16le, 20 ms frames |
+| The whole picture in one JSON (line, daemon, PBX, phones, calls) | `ubus call luci.slic status` (package `luci-app-slic-fxs`, doc 16) | read-only; ~0.4 s of CPU per call, so poll no faster than every few seconds |
 
 Candidate applications and what each still needs:
 

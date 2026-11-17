@@ -1,0 +1,14 @@
+{
+	"luci-app-slic-fxs": {
+		"description": "Grant access to the phone line status page and phone line settings",
+		"read": {
+			"ubus": {
+				"luci.slic": [ "status" ]
+			},
+			"uci": [ "slic" ]
+		},
+		"write": {
+			"uci": [ "slic" ]
+		}
+	}
+}
