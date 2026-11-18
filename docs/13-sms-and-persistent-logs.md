@@ -40,7 +40,7 @@ fixed below.
 ```
 your phone ──network──▶ modem (Unisoc) ──stores it──▶ SIM card ("SM", 30 slots)
                                                          │
-             smsd polls every few seconds over /dev/ttyUSB0 (AT commands)
+             smsd polls every few seconds over /dev/ttyUSB4 (AT commands; ttyUSB0 until 2026-11-18)
                                                          ▼
                  reads it, writes /root/spool/sms/incoming/GSM1.xxxxxx,
                  then deletes it from the SIM (so the SIM never fills)
@@ -102,13 +102,20 @@ logfile = 1          # 1 = send smsd's log to syslog (logread), not a file
 loglevel = 5
 
 [GSM1]
-device = /dev/ttyUSB0
+device = /dev/ttyUSB4
 incoming = yes
 baudrate = 115200
-init = AT
+init = AT+CREG=0;+CEREG=0
 init2 = AT+CPMS="SM","SM","SM";+CNMI=2,1,0,0,0
 keep_open = yes
 ```
+
+*Changed 2026-11-18 (doc 17):* `device` was `/dev/ttyUSB0` and `init` was
+`AT`. smsd now gets `ttyUSB4`, an AT channel that neither the LTE dial
+(`ttyUSB3`) nor the stock board script (`ttyUSB0` after a reset) uses. The
+init string switches off the modem's network-registration reports. They
+were 20 % of the system log, and they pile up on any AT port nobody reads.
+`scripts/router_modem_ports.sh status` checks the assignment.
 
 ```sh
 /etc/init.d/smstools3 enable
@@ -126,12 +133,13 @@ That's harmless: smsd uses the paths from the config.
 | Read received SMS | `ls -lt /root/spool/sms/incoming/`, then `cat` a file. Headers `From:`, `Sent:`, then a blank line, then the text |
 | Send an SMS | `printf 'To: 947XXXXXXXX\n\nHello\n' > /tmp/m && mv /tmp/m /root/spool/sms/outgoing/msg1` (international format without `+`; write elsewhere and `mv`, so smsd never reads a half-written file) |
 | Did it go? | the file moves to `sent/` (or `failed/`); `logread -e smsd` shows `SMS sent, Message_id: …` |
-| What's on the SIM right now | `sms_tool -d /dev/ttyUSB3 at 'AT+CPMS="SM";+CMGL=4'` (`+CPMS: n,30,…` = n stored of 30) |
+| What's on the SIM right now | `sms_tool -d /dev/ttyUSB0 at 'AT+CPMS="SM";+CMGL=4'` (`+CPMS: n,30,…` = n stored of 30; needs `apk add sms-tool`) |
 | Watch live | `logread -e smsd -f` |
 
-`ttyUSB3` also speaks AT and is free while smsd holds `ttyUSB0`
-(`keep_open = yes`). Read-only queries there are safe. Don't delete
-messages from it while smsd is running.
+`ttyUSB0` is the AT port left free for people and tools while smsd holds
+`ttyUSB4` (`keep_open = yes`). Read-only queries there are safe. Don't
+delete messages from it while smsd is running. *(Until 2026-11-18 this
+said `ttyUSB3` and `ttyUSB0`; see doc 17.)*
 
 ### 2.5 Things that can still bite
 
@@ -172,6 +180,14 @@ shares a port with the LTE data link.**
 
 The likely fix is to point smsd back at `ttyUSB0` (§2.3) and re-run §4's
 send and receive checks. It hasn't been done yet; see §5.
+
+**Update 2026-11-18: resolved, differently from the line above (doc 17).**
+Mapping the ports from both ends showed that `ttyUSB0` is the stock board
+script's dial port after a reset, so smsd stays on `ttyUSB4` and the LTE
+dial moved to `ttyUSB3`. smsd's init now switches registration reports off.
+That setting turned out to be modem-wide, and it also fixed a dial failure
+the reports caused. A re-dial while smsd runs was tested (up in 12 s, smsd
+unaffected).
 
 ---
 
@@ -310,7 +326,8 @@ creates the two folders itself. `/etc/smsd.conf` is now listed in
 | Check | Command | Expect |
 |---|---|---|
 | smsd reads the right store | `logread -e smsd \| tail` | no "did not accept the second init string" |
-| SIM is being emptied | `sms_tool -d /dev/ttyUSB3 at 'AT+CPMS="SM";+CMGL=4'` | `+CPMS: 0,30,…` after smsd has run |
+| SIM is being emptied | `sms_tool -d /dev/ttyUSB0 at 'AT+CPMS="SM";+CMGL=4'` | `+CPMS: 0,30,…` after smsd has run |
+| Ports don't clash | `/usr/bin/ssh root@<router> sh -s < scripts/router_modem_ports.sh` | `OK: no clashes` (doc 17) |
 | SMS receive | text the SIM's number from a mobile | a new file in `/root/spool/sms/incoming/` within ~10 s |
 | SMS send | §2.4 | file in `sent/`, message on the phone |
 | System log to disk | `logger -t test hello; tail -1 /srv/log/messages` | the `hello` line |
@@ -331,10 +348,10 @@ creates the two folders itself. `/etc/smsd.conf` is now listed in
 - `Master.csv` and `incoming/` grow forever (a few hundred bytes per call or
   SMS).
 - ModemManager vs smsd (§2.5): fine while ModemManager stays disabled.
-- **smsd and wwan share `ttyUSB4`** (§2.5 update, 2026-11-17): move smsd
-  back to `ttyUSB0`, then test an SMS send and receive, plus
-  `ifdown wwan; ifup wwan` while smsd runs. Add `sms-tool` to the package
-  list.
+- ~~**smsd and wwan share `ttyUSB4`**~~ **Done 2026-11-18** (doc 17): wwan
+  is on `ttyUSB3`, smsd is on `ttyUSB4` with registration reports off, and
+  a re-dial while smsd runs was tested, and an SMS was received after the
+  move (23:18). Still open: adding `sms-tool` to the package list.
 
 ## How obtained
 

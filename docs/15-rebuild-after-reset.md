@@ -10,6 +10,7 @@ packages back". It ties together scripts written separately:
 | PBX: Asterisk modules, configs, accounts | `slic-asterisk-setup` (in `slic-fxs`) | 12 §8.1 |
 | Firewall, SSH, nginx hardening | [`scripts/router_fw_provision.sh`](../scripts/router_fw_provision.sh), then the audit | 14 |
 | Optional: live SIP capture to sngrep (HEP) | [`scripts/router_hep.sh`](../scripts/router_hep.sh) | 12 §7.1 |
+| Modem ports: the LTE dial and SMS each on their own AT channel | [`scripts/router_modem_ports.sh`](../scripts/router_modem_ports.sh) | 17 |
 
 Written 2026-11-17. **Each script was tested on the live router or on
 stand-in folders, but the full sequence has not been run end to end**,
@@ -169,6 +170,20 @@ from then on. The package install keeps restored config files (it kept
 `/usr/bin/ssh $R 'sh -s' < scripts/router_hep.sh`. If it's off, or the PC's
 address has changed, run `... 'sh -s -- on <pc-ip>:9060' < scripts/router_hep.sh`.
 
+### Step 6a — modem ports (the LTE dial and SMS)
+
+```sh
+/usr/bin/ssh $R 'sh -s' < scripts/router_modem_ports.sh             # expect "OK: no clashes"
+/usr/bin/ssh $R 'sh -s -- apply' < scripts/router_modem_ports.sh    # only if it reports a clash or a NOTE
+```
+
+The backup brings back `/etc/config/network` (wwan on `ttyUSB3`) and
+`/etc/smsd.conf` (smsd on `ttyUSB4`; it's in `/etc/sysupgrade.conf`). A
+reset *without* the backup gets the stock board script's wwan on
+`ttyUSB0`. `status` shows either case. `apply` backs up, then re-dials the
+LTE link and restarts smsd, which takes about a minute. Doc 17 explains the
+map and the dial trap that `apply` guards against.
+
 ### Step 7 — firewall
 
 ```sh
@@ -186,7 +201,9 @@ switches SSH to key-only (doc 14 §4.2).
 2. Dial 100 from a softphone. Re-enter the passwords if the setup made new
    ones.
 3. Start the call agent and dial `1717#`.
-4. Reboot once. LuCI should show no unsaved changes, and the extroot status
+4. Text the SIM from a mobile: a new file should appear in
+   `/root/spool/sms/incoming/` within about 10 s (doc 13 §4).
+5. Reboot once. LuCI should show no unsaved changes, and the extroot status
    should say ACTIVE.
 
 ## 3. What was tested, and how
@@ -199,6 +216,7 @@ switches SSH to key-only (doc 14 §4.2).
 | `luci-app-slic-fxs` | doc 16 §7: backend, Save & Apply path, offline render test, package install | the pages in a browser |
 | `router_fw_provision.sh` | doc 14 §4.3 | live `--apply` |
 | `router_hep.sh` | on copies of the two files: a second `on` changes nothing; `off` restores `modules.conf` byte for byte; your own `noload` of `res_pjsip_history` is kept; an unexpected `hep.conf` layout → both files restored; owner and mode kept. Live: `on`, then an Asterisk restart (doc 12 §7.1) | a router reboot; coming back through a backup restore |
+| `router_modem_ports.sh` | 2026-11-18, live: `status` flagged the shared `ttyUSB4` (exit 1); `apply` moved wwan, restarted smsd, and backed up both files; the first dial failed on the backlog trap and was recovered by hand (doc 17 §4); a second re-dial came up in 12 s; `status` then `OK` (exit 0) | `apply` on a freshly reset router; a reboot |
 
 The stand-in run for `router_extroot.sh`, on the router:
 

@@ -32,6 +32,35 @@ The project outgrew its original goal. Timeline of scope:
 11. **Phone pages in the web interface** — LuCI Services → Phone: a status
    page for the line, the PBX, phones and calls, SIP account management,
    and a form for the line's settings (doc 16).
+12. **Modem serial ports mapped** — what each of the modem's five ports is
+   (three AT channels, two binary streams), matched from both ends, and one
+   job per AT channel (doc 17).
+
+## Current state: modem ports (2026-11-18)
+
+- **Port map** (doc 17):
+  - `ttyUSB0`, `ttyUSB3` and `ttyUSB4` are three separate AT channels into
+    the modem;
+  - `ttyUSB1`/`ttyUSB2` are Unisoc's binary diagnostics and log streams,
+    the "garbage" ports.
+  - Matched from the router's USB interfaces and, over adb, from the
+    modem's gadget config, atrouter and engpc.
+- **New assignment, applied and tested:**
+  - the LTE dial on `ttyUSB3` (`delay 5`);
+  - smsd on `ttyUSB4`, with registration reports switched off;
+  - `ttyUSB0` left for people and tools.
+  - `scripts/router_modem_ports.sh` checks it (`status`) and sets it
+    (`apply`).
+- **The trap it exposed:**
+  - An AT port nobody has open collects the modem's `+CREG` reports. The
+    first dial on the new port read one as the modem's maker and stopped
+    ("Unsupported modem").
+  - Recovered by hand. Switching the reports off fixed it for good: the
+    setting is modem-wide.
+  - A re-dial while smsd runs then came up in 12 s.
+- **Also found, not changed:** LTE isn't a backup route right now
+  (`defaultroute 0`, mwan3 not running), so a fibre outage takes the house
+  offline (doc 17 §8).
 
 ## Current state: rebuild runbook + package cleanup (2026-11-17)
 
@@ -80,7 +109,7 @@ The project outgrew its original goal. Timeline of scope:
   fix, doc 16 §4.1), then r7 (`slic-accounts`). Earlier files are in
   `/root/backups/slic-fxs-r5-20261117-160223.tgz` and
   `slic-fxs-r6-20261117-194339.tgz`.
-- **Found while checking the docs (not fixed yet):** since the 2026-11-05
+- **Found while checking the docs (fixed 2026-11-18, see above):** since the 2026-11-05
   rebuild, smsd uses `ttyUSB4`, the same modem port as the wwan data link.
   It works only because wwan dials at boot before smsd starts. smsd's
   "Unexpected input: +CREG" lines also made up 20 % of the persistent
@@ -274,6 +303,7 @@ repositioning toward Mobitel LTE coverage.
 | `14-firewall-security.md` | Firewall security check-up: who can reach the router (CGNAT, carrier network, LAN), every check and today's result, the boot-time duplicate `wwan` bug, the audit and provisioning scripts (what they change, safety rails, test mode) |
 | `15-rebuild-after-reset.md` | Factory reset → working router: why the order is extroot → backup → packages → own builds → PBX → firewall, the runbook with commands, what each script was tested with, the package list and the 2026-11-17 Asterisk cleanup |
 | `16-luci-phone-pages.md` | LuCI Services → Phone: what the status page, the SIP accounts page and the line form show, where each value comes from, cost per refresh, security, the procd bug that kept settings from reaching the daemon, developing and testing |
+| `17-modem-serial-ports.md` | The modem's five serial ports: what each one is (matched from both ends), who uses which and why, the trap where an unread AT port poisons the next dial, recovering a dial that gave up, the check/apply script, and the finding that LTE isn't a backup route |
 | `debrief.md` | From-the-beginning briefing: status, stories, decisions, open items |
 
 ## Artifacts

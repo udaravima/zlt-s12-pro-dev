@@ -47,6 +47,15 @@ Investigated live on 2026-09-26. Everything below was verified on the boxes.
 
 ## AT command channel (the control path)
 
+> **Update 2026-11-18:** the full port map, matched from both ends, and who
+> uses each port now is in **doc 17**. In short: `ttyUSB0`, `ttyUSB3` and
+> `ttyUSB4` are three separate AT channels (atrouter channels 0/1/2), and
+> `ttyUSB1`/`ttyUSB2` are engpc's binary diagnostics and log streams. The
+> "only ttyUSB0 speaks AT reliably" below no longer holds: all three answer
+> `AT` → `OK` now. My guess is that ModemManager was holding the other two
+> at the time; that isn't verified. The LTE dial uses
+> `ttyUSB3`, smsd uses `ttyUSB4`, and `ttyUSB0` is for people and tools.
+
 - Router `/dev/ttyUSB0-4` via `option` driver (USB interfaces
   1.8/1.9/1.10/1.11/1.13 of `1782:4055`).
 - **Only ttyUSB0 speaks AT reliably** (tested: `AT` → `OK`). ttyUSB1/2 give

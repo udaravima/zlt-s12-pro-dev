@@ -20,6 +20,7 @@ reproduce it. Each document has a "How obtained" section with the commands.
 | Modem as a peer | Root shell, dedicated NCM link to the router (~6–19 MB/s), modem-side tooling | [03](docs/03-interconnect.md), [05](docs/05-expansion.md) |
 | Full modem firmware dump | 128 MB NAND dumped over USB, md5-verified; method and pitfalls | [06](docs/06-fw-dump.md) |
 | WWAN data link | NCM dial path fixed; metric-based failover between PPPoE and LTE | [08](docs/08-wwan-ncm-data.md) |
+| Modem serial ports | All five mapped from both ends: three AT channels and two binary streams (diagnostics, logs); one job per channel; and a trap where an unread AT port's backlog makes the next LTE dial fail with "Unsupported modem" | [17](docs/17-modem-serial-ports.md), [`scripts/`](scripts) |
 | Voice / SMS | AT channel, oFono on the modem, SIM and network behaviour | [07](docs/07-voice-sms.md) |
 | SMS gateway + persistent logs | smstools3 sends and receives SMS; SMS, system log and Asterisk call history kept across reboots | [13](docs/13-sms-and-persistent-logs.md) |
 | Firewall check-up | Read-only audit + idempotent provisioning scripts (firewall4, SSH, nginx); a stock board script that duplicates `wwan` in the WAN zone on every boot | [14](docs/14-firewall-security.md), [`scripts/`](scripts) |
@@ -47,6 +48,7 @@ reproduce it. Each document has a "How obtained" section with the commands.
 | [14-firewall-security](docs/14-firewall-security.md) | Firewall security check-up: exposure model, every check explained, the boot-time duplicate `wwan` bug, audit and provisioning scripts |
 | [15-rebuild-after-reset](docs/15-rebuild-after-reset.md) | Factory reset → working router: extroot, LuCI backup, package list, own builds, PBX, firewall, in that order and why |
 | [16-luci-phone-pages](docs/16-luci-phone-pages.md) | LuCI pages for the phone: status, SIP accounts and line settings, data sources, cost, security, the procd environment-compare bug, how to develop and test |
+| [17-modem-serial-ports](docs/17-modem-serial-ports.md) | The modem's serial ports: what each is, who uses which and why, the unread-port backlog trap, the check/apply script |
 | [debrief](docs/debrief.md) | From-the-beginning briefing |
 
 ## Phone port quick start

@@ -208,7 +208,12 @@ an Asterisk restart. The previous `world` and installed list are in
    Reproduce cleanly with `ifdown/ifup slt_internet_wan`, find the cause,
    then make the keepalive gateway-agnostic (it hardcodes the DHCP
    gateway). Until then: check `ip route show default` after every pppoe
-   restart.
+   restart. *2026-11-18:* wwan now has `defaultroute '0'`, metric 20, and
+   mwan3 isn't running, so there's no LTE default route at all and no
+   failover. That needs a decision (doc 17 §8).
+1a. **Modem ports** (done 2026-11-18, doc 17): the LTE dial is on `ttyUSB3`
+   and smsd on `ttyUSB4` with registration reports off. SMS receive
+   re-tested after the move. Still open: a reboot.
 2. **4G direction**: Dialog SIM test or antenna repositioning — the Oct 2
    test proved config can't fix it (coverage + SIM).
 3. **Voice/SMS exercise**: SMS round trip done 2026-10-13 with smstools3

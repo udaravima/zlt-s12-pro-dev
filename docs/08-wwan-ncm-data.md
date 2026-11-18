@@ -4,6 +4,19 @@
 routing incident described in §4. Everything below was observed live on the
 devices unless marked "theory".*
 
+> **Update 2026-11-18 (ports reassigned; doc 17):**
+> - After the 2026-11-05 reset, wwan and smsd were both on `ttyUSB4`. wwan
+>   is back on **`ttyUSB3`** (with `delay 5`) and smsd keeps `ttyUSB4`.
+> - Moving the dial exposed a trap: an AT port nobody has open collects
+>   the modem's `+CREG`/`+CEREG` reports. The dial's "who made you" query
+>   (`AT+CGMI`, the `ncm.json` key, §3) then read `g:` and failed with
+>   "Unsupported modem", leaving wwan marked unavailable.
+> - smsd's init now turns those reports off. The setting is modem-wide. A
+>   re-dial while smsd runs came up in 12 s.
+> - **Also found:** wwan now has `defaultroute '0'` and metric 20, and
+>   mwan3 isn't running. So LTE is **not** a backup route at the moment;
+>   the §4 / 2026-10-02 failover design isn't what's configured (doc 17 §8).
+
 > **Update 2026-10-13 (who holds which modem port):** **smstools3 (`smsd`)
 > now holds `/dev/ttyUSB0` permanently** (`keep_open = yes`) to receive and
 > send SMS (doc 13). On this date ModemManager showed the modem as
